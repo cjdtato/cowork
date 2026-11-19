@@ -122,3 +122,14 @@ body.cw-drag{user-select:none;-webkit-user-select:none;cursor:grabbing}
 .cw-emo{display:flex;flex-wrap:wrap;gap:2px;padding:6px 10px;border-top:1px solid var(--bd);background:var(--panel);flex:none}
 .cw-emo button{width:34px;height:34px;border:0;background:transparent;border-radius:10px;font-size:1.15rem;line-height:1;padding:0}
 .cw-emo button:hover{background:var(--soft)}
+
+/* clickable people + profile viewer */
+.cw-row[data-pid]{cursor:pointer}
+.cw-row.off{opacity:.6}.cw-row.off:hover{opacity:1}
+.cw-av,.cw-nm{cursor:pointer}
+.pv-st{font-size:.72rem;font-weight:800;display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:99px;background:var(--soft);border:1px solid var(--bd);opacity:.8}
+.pv-st.on{opacity:1}
+.pv-dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:6px 0 2px;font-size:.82rem}
+.pv-dl dt{font-weight:800;opacity:.6}.pv-dl dd{margin:0;font-weight:700;min-width:0;overflow-wrap:anywhere}
+.pv-hid{text-align:center;margin:6px 0}
+.cw-row.off .cw-st::after{background:#94a3b8}

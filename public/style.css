@@ -380,3 +380,6 @@ body.login{display:flex;flex-direction:column;align-items:center;justify-content
 .login input{background:var(--panel)}
 .login .foot{text-align:center;font-size:.7rem;font-weight:600;opacity:.55;margin-top:2px}
 .dotrow{gap:4px}.dotrow .dotc{width:18px;height:18px}.dotb{padding:4px}
+
+/* header children that span the full width (overview filters, user chips) */
+.top>.ctl,.top>.ulist,.top>.help{grid-column:1/-1}

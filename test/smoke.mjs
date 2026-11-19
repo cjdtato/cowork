@@ -219,6 +219,26 @@ check('roles: re-creating the role starts with an empty channel', (await N('/tag
 check('roles: restoring a backup brings the roles and who holds them back', (await N('/backup', 'POST', bk.d)).status === 200 && (await N('/tags')).d.tags.length === 2 && (await N('/users')).d.users.find(u => u.id === staff2).tagIds.join() === 'dsd');
 check('roles: an older backup (no roles) still restores and drops stale role ids', (await N('/backup', 'POST', { ...bk.d, version: 4, tags: undefined, users: bk.d.users.map(u => ({ ...u, tagIds: ['dsd', 'zzz'] })) })).status === 200 && (await N('/users')).d.users.every(u => u.tagIds.every(t => ['dsd', 'billing-team'].includes(t))));
 
+
+console.log('Profiles: view online/offline users, hide profile');
+const s1id = (await N('/users')).d.users.find(x => x.username === 'staff1').id;
+const V = browser(); await V('/login', 'POST', { username: 'sup1', password: 'sup-pass-12' });   // a plain viewer
+await SS('/chat');   // staff2 heartbeat -> online
+const pOn = await V('/profile/' + staff2), pOff = await SS('/profile/' + s1id);
+check('profile: anyone can view an online user', pOn.status === 200 && pOn.d.online === true && pOn.d.username === 'staff2' && !pOn.d.hidden);
+check('profile: anyone can view an offline user (with last seen when known)', pOff.status === 200 && pOff.d.online === false && pOff.d.hidden === false);
+check('profile: chat lists offline people too', (await SS('/chat')).d.offUsers.some(u => u.id === s1id));
+check('profile: unknown id is 404', (await V('/profile/nope')).status === 404);
+check('profile: hiding needs login', (await browser()('/profile-visibility', 'POST', { hidden: true })).status === 401);
+check('profile: a user can hide their own profile', (await SS('/profile-visibility', 'POST', { hidden: true })).d.profileHidden === true && (await SS('/me')).d.user.profileHidden === true);
+const hv = await V('/profile/' + staff2);
+check('profile: others then see only name + role', hv.d.hidden === true && hv.d.name && hv.d.role && !hv.d.username && !hv.d.lastSeen && !('avatarAt' in hv.d));
+check('profile: the owner still sees their own full profile', (await SS('/profile/' + staff2)).d.hidden === false);
+check('profile: a Head can still see a hidden profile', (await N('/profile/' + staff2)).d.hidden === false);
+check('profile: hidden photo is not served to others', (await V('/avatar/' + staff2)).status === 404);
+check('profile: chat cards drop the hidden photo version for others', !((await V('/chat')).d.avs || {})[staff2]);
+check('profile: un-hiding works', (await SS('/profile-visibility', 'POST', { hidden: false })).d.profileHidden === false && (await V('/profile/' + staff2)).d.hidden === false);
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(failed ? `\n${failed} check(s) FAILED` : '\nAll checks passed');
 process.exit(failed ? 1 : 0);

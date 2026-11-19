@@ -417,8 +417,14 @@ function renderProf(){
     ?`🔒 You changed your photo recently. You can change it again on ${fmtDate(ME.avatarNext)} (${Math.ceil(left/864e5)} day${Math.ceil(left/864e5)===1?'':'s'} left).`
     :(ME.avatarAt?'You can change your photo now. After saving, it locks for 15 days.':'Add a photo. After saving, you can change it once every 15 days.');
 }
-function openProf(){newPic=null;$('#avFile').value='';renderProf();$('#prof').hidden=false}
+function openProf(){$('#hideProf').checked=!!ME.profileHidden;newPic=null;$('#avFile').value='';renderProf();$('#prof').hidden=false}
 $('#profBtn').onclick=openProf;
+$('#hideProf').onchange=async e=>{
+  const want=e.target.checked;e.target.disabled=true;
+  try{const r=await api('/api/profile-visibility','POST',{hidden:want});ME.profileHidden=r.profileHidden;toast(want?'Profile hidden from other users':'Profile visible to other users')}
+  catch(x){e.target.checked=!want;toast('⚠️ '+x.message)}
+  e.target.disabled=false;
+};
 $('#profX').onclick=()=>{$('#prof').hidden=true};
 $('#prof').addEventListener('click',e=>{if(e.target.id==='prof')$('#prof').hidden=true});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#prof').hidden)$('#prof').hidden=true});

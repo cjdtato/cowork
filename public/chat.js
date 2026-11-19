@@ -78,6 +78,42 @@
     if (at) { const i = new Image(); i.alt = ''; i.onload = () => { d.textContent = ''; d.append(i); }; i.src = '/api/avatar/' + encodeURIComponent(u.id) + '?v=' + at; }
     return d;
   }
+  /* ---------- profile viewer (anyone, online or offline; hidden profiles show name + role only) ---------- */
+  const RL = { admin: 'Head', host: 'Supervisor', staff: 'Staff' };
+  const ago = ts => { const s = Math.max(0, (Date.now() - ts) / 1000); if (s < 90) return 'just now'; const m = s / 60; if (m < 60) return Math.round(m) + ' min ago'; const h = m / 60; if (h < 24) return Math.round(h) + ' h ago'; return Math.round(h / 24) + ' day(s) ago'; };
+  const pdate = v => /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(v + 'T00:00:00+08:00').toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' }) : '';
+  let pv = null;
+  function closeProfile() { if (pv) { pv.remove(); pv = null; } }
+  async function openProfile(id) {
+    closeProfile();
+    pv = document.createElement('div'); pv.className = 'overlay cw-pv'; pv.style.zIndex = 60;
+    pv.innerHTML = '<div class="panel dlg profdlg" role="dialog" aria-modal="true" aria-label="Profile"><div class="profcard"><p class="sub">Loading…</p></div></div>';
+    pv.addEventListener('click', e => { if (e.target === pv) closeProfile(); });
+    document.body.append(pv);
+    let d; try { d = await api('/api/profile/' + encodeURIComponent(id)); } catch (x) { pv.firstChild.innerHTML = `<h2>Profile</h2><p class="sub">${esc(x.message || 'Could not load profile.')}</p><button class="btn" type="button" data-x>Close</button>`; pv.querySelector('[data-x]').onclick = closeProfile; return; }
+    const big = document.createElement('div'); big.className = 'avbig';
+    const fall = document.createElement('span'); fall.className = 'av lg'; fall.style.background = `hsl(${hue(d.id)} 52% 40%)`; fall.style.color = '#fff';
+    fall.textContent = String(d.name || '?').trim().split(/\s+/).slice(0, 2).map(w => [...w][0]).join('').toUpperCase() || '?'; big.append(fall);
+    if (!d.hidden && d.avatarAt) { const i = new Image(); i.alt = ''; i.onload = () => { big.textContent = ''; big.append(i); }; i.src = '/api/avatar/' + encodeURIComponent(d.id) + '?v=' + d.avatarAt; }
+    const status = d.online ? '<span class="pv-st on"><i class="cw-dot"></i>Online</span>' : '<span class="pv-st">Offline</span>';
+    let rows = '';
+    if (d.hidden) rows = '<p class="sub pv-hid">🔒 This person has hidden their profile.</p>';
+    else {
+      rows += `<dl class="pv-dl"><dt>Username</dt><dd>@${esc(d.username)}</dd>`;
+      if (!d.online && d.lastSeen) rows += `<dt>Last seen</dt><dd>${ago(d.lastSeen)}</dd>`;
+      if (d.tagNames.length) rows += `<dt>Roles</dt><dd>${d.tagNames.map(esc).join(', ')}</dd>`;
+      if (d.hostNames.length) rows += `<dt>Reports to</dt><dd>${d.hostNames.map(esc).join(', ')}</dd>`;
+      if (pdate(d.created)) rows += `<dt>Member since</dt><dd>${pdate(d.created)}</dd>`;
+      rows += '</dl>';
+    }
+    if (d.hiddenByUser && (d.mine || !d.hidden)) rows += `<p class="sub pv-hid">${d.mine ? 'Your profile is hidden from others.' : '🔒 Hidden from other users (you can see it as a Head).'}</p>`;
+    const card = pv.firstChild; card.innerHTML = '';
+    const pc = document.createElement('div'); pc.className = 'profcard'; pc.append(big);
+    pc.insertAdjacentHTML('beforeend', `<b>${esc(d.name)}${d.mine ? ' <span class="cw-you">you</span>' : ''}</b><span class="sub">${RL[d.role] || ''}</span>${status}`);
+    card.append(pc); card.insertAdjacentHTML('beforeend', rows + '<button class="btn" type="button" data-x>Close</button>');
+    card.querySelector('[data-x]').onclick = closeProfile; card.querySelector('[data-x]').focus();
+  }
+  addEventListener('keydown', e => { if (e.key === 'Escape' && pv) { closeProfile(); e.stopPropagation(); } }, true);
   function note(msg) {                       // short error line above the composer
     const t = $('#cwTyping'); t.textContent = msg; t.classList.add('err');
     clearTimeout(noteT); noteT = setTimeout(() => { t.classList.remove('err'); renderTyping(); }, 3500);
@@ -134,7 +170,7 @@
     if (stick || near) log.scrollTop = log.scrollHeight;
   }
   function renderMembers() {
-    const sig = JSON.stringify([S.me && S.me.id, S.online.map(u => [u.id, u.typing, (S.avs && S.avs[u.id]) || u.avatarAt]), S.offline]);
+    const sig = JSON.stringify([S.me && S.me.id, S.online.map(u => [u.id, u.typing, (S.avs && S.avs[u.id]) || u.avatarAt]), S.offline, (S.offUsers || []).map(u => [u.id, (S.avs && S.avs[u.id]) || u.avatarAt])]);
     if (sig === sigM) return; sigM = sig;
     let h = `<div class="cw-mh"><b>Online now</b><button class="cw-ib" type="button" data-a="closem" aria-label="Close list" title="Close">×</button></div>`;
     h += `<h4>Online — ${S.online.length}</h4>`;
@@ -143,9 +179,13 @@
     GROUPS.forEach(([r, label]) => {
       const g = S.online.filter(u => u.role === r); if (!g.length) return;
       h += `<h4>${label} — ${g.length}</h4>`;
-      g.forEach(u => { idx.push(u); h += `<div class="cw-row"><span class="cw-st" data-i="${idx.length - 1}"></span><b>${esc(u.name)}</b>${S.me && u.id === S.me.id ? '<span class="cw-you">you</span>' : ''}${u.typing ? '<span class="cw-dots" title="typing"><i></i><i></i><i></i></span>' : ''}</div>`; });
+      g.forEach(u => { idx.push(u); h += `<div class="cw-row" data-pid="${esc(u.id)}" role="button" tabindex="0" title="View profile"><span class="cw-st" data-i="${idx.length - 1}"></span><b>${esc(u.name)}</b>${S.me && u.id === S.me.id ? '<span class="cw-you">you</span>' : ''}${u.typing ? '<span class="cw-dots" title="typing"><i></i><i></i><i></i></span>' : ''}</div>`; });
     });
-    h += `<p class="cw-off">${S.offline} offline</p>`;
+    h += `<h4>Offline — ${S.offline}</h4>`;
+    if (!S.offline) h += '<p class="cw-none">Everyone is online.</p>';
+    GROUPS.forEach(([r]) => (S.offUsers || []).filter(u => u.role === r).forEach(u => {
+      idx.push(u); h += `<div class="cw-row off" data-pid="${esc(u.id)}" role="button" tabindex="0" title="View profile"><span class="cw-st" data-i="${idx.length - 1}"></span><b>${esc(u.name)}</b></div>`;
+    }));
     mem.innerHTML = h;
     mem.querySelectorAll('.cw-st').forEach(el => el.append(avatar(idx[el.dataset.i])));
   }
@@ -227,7 +267,7 @@
     const avChanged = JSON.stringify(d.avs || {}) !== JSON.stringify(S.avs);
     S.avs = d.avs || {};
     S.hot = typeof d.hot === 'number' ? d.hot : 1e9;
-    S.me = d.me; S.channels = d.channels; S.online = d.online; S.offline = d.offline;
+    S.me = d.me; S.channels = d.channels; S.online = d.online; S.offline = d.offline; S.offUsers = d.offUsers || [];
     d.channels.forEach(c => { if (S.seen[c.id] == null) S.seen[c.id] = S.fresh ? c.last : 0; });   // new browser: all read · channel created later: everything in it is unread
     S.fresh = false;
     if (!d.channels.some(c => c.id === S.ch)) { S.ch = d.channels[0].id; S.rev = -1; S.msgs = []; S.loaded = false; LS.set('cw_ch', S.ch); }   // my channel was removed
@@ -314,12 +354,18 @@
   addEventListener('resize', placePill); placePill();
   $('#cwMin').onclick = () => { setOpen(false); $('#cwPill').focus(); };
   $('#cwMem').onclick = () => setMembers(!S.members);
-  mem.addEventListener('click', e => { if (e.target.closest('[data-a=closem]')) setMembers(false); });
+  mem.addEventListener('click', e => {
+    if (e.target.closest('[data-a=closem]')) return setMembers(false);
+    const r = e.target.closest('[data-pid]'); if (r) openProfile(r.dataset.pid);
+  });
+  mem.addEventListener('keydown', e => { const r = e.target.closest('[data-pid]'); if (r && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openProfile(r.dataset.pid); } });
   $('#cwChans').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.ch) switchTo(b.dataset.ch); else if (b.dataset.a === 'add') addChannel(); else if (b.dataset.a === 'rm') rmChannel();
   });
   log.addEventListener('click', e => {
+    const who = e.target.closest('.av, .cw-nm'), mrow = e.target.closest('.cw-msg');
+    if (who && mrow) { const m = S.msgs.find(x => x.id === mrow.dataset.id); if (m) return openProfile(m.uid); }
     const b = e.target.closest('[data-a]'), row = e.target.closest('.cw-msg'); if (!b || !row) return;
     if (b.dataset.a === 'edit') startEdit(row.dataset.id); else if (b.dataset.a === 'del') del(row.dataset.id);
   });

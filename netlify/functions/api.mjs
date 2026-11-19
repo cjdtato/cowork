@@ -45,7 +45,7 @@ async function mutate(st, key, init, fn) {
   throw H('Busy, please try again.', 409);
 }
 
-const normUser = u => ({ ...u, role: ROLES.includes(u.role) ? u.role : 'staff', hostIds: Array.isArray(u.hostIds) ? u.hostIds : [], tagIds: Array.isArray(u.tagIds) ? uniq(u.tagIds) : [], pv: Number.isInteger(u.pv) ? u.pv : 0 });
+const normUser = u => ({ ...u, role: ROLES.includes(u.role) ? u.role : 'staff', hostIds: Array.isArray(u.hostIds) ? u.hostIds : [], tagIds: Array.isArray(u.tagIds) ? uniq(u.tagIds) : [], pv: Number.isInteger(u.pv) ? u.pv : 0, profileHidden: !!u.profileHidden });
 
 async function usersInit() {
   const pw = process.env.ADMIN_INITIAL_PASSWORD;
@@ -76,10 +76,13 @@ const ensureTagChannels = (st, tags) => mutate(st, 'chat:channels', () => [{ id:
 
 const pub = (u, all) => ({
   id: u.id, username: u.username, name: u.name, role: u.role, active: u.active, created: u.created, mustChange: !!u.mustChange,
-  avatarAt: u.avatarAt || 0, avatarNext: u.avatarAt ? u.avatarAt + AVATAR_COOLDOWN : 0,
+  avatarAt: u.avatarAt || 0, avatarNext: u.avatarAt ? u.avatarAt + AVATAR_COOLDOWN : 0, profileHidden: !!u.profileHidden,
   hostIds: u.role === 'staff' ? u.hostIds : [], tagIds: u.tagIds || [],
   hostNames: u.role === 'staff' ? u.hostIds.map(id => all.find(x => x.id === id)?.name).filter(Boolean) : [],
 });
+// A person who set their profile to "hidden for viewing" shows only their name and role to others; Heads (admins) and the person themself still see everything.
+const canSee = (u, me) => !u.profileHidden || u.id === me.id || me.role === 'admin';
+const avAt = (u, me) => (u && u.avatarAt && canSee(u, me) ? u.avatarAt : 0);
 const activeAdmins = us => us.filter(u => u.role === 'admin' && u.active).length;
 
 // ---------- permissions & DTOs ----------
@@ -133,7 +136,7 @@ const chanList = async (st, me) => (await chanRaw(st)).filter(c => !c.tag || me.
 const mutChat = (st, ch, fn) => mutate(st, 'chat:' + ch, () => ({ rev: 0, msgs: [] }), fn);
 const chatMsg = (m, me, us) => {
   const u = us.find(x => x.id === m.uid);
-  return { id: m.id, uid: m.uid, name: u ? (u.name || u.username) : 'Deleted user', role: u ? u.role : 'staff', avatarAt: u?.avatarAt || 0,
+  return { id: m.id, uid: m.uid, name: u ? (u.name || u.username) : 'Deleted user', role: u ? u.role : 'staff', avatarAt: avAt(u, me),
     text: m.text, ts: m.ts, edited: !!m.edited, mine: m.uid === me.id, canDel: m.uid === me.id || me.role === 'admin' };   // Heads can remove anyone's message; only the author can edit
 };
 const chatText = v => { const t = String(v ?? '').trim().slice(0, 1000); if (!t) throw H('Type a message first.'); return t; };
@@ -207,6 +210,8 @@ export default async (req) => {
     // ----- profile picture -----
     const am = path.match(/^\/avatar(?:\/([\w-]+))?$/);   // /avatar = mine, /avatar/<id> = a teammate's (shown in the group chat)
     if (am && m === 'GET') {
+      const owner = am[1] ? us.find(x => x.id === am[1]) : me;
+      if (owner && !canSee(owner, me)) throw H('No profile picture', 404);   // hidden profile: the photo is not served to others
       const a = await st.get('avatar:' + (am[1] || me.id), { type: 'json' });
       if (!a) throw H('No profile picture', 404);
       return new Response(Buffer.from(a.b64, 'base64'), { status: 200, headers: { 'Content-Type': a.type, 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff' } });
@@ -227,6 +232,26 @@ export default async (req) => {
         u.avatarAt = at = Date.now();
       });
       return J({ ok: 1, avatarAt: at, avatarNext: at + AVATAR_COOLDOWN });
+    }
+
+    // ----- profile visibility + viewing someone's profile (online or offline) -----
+    if (path === '/profile-visibility' && m === 'POST') {
+      const hidden = body.hidden === true;
+      await mutUsers(st, async list => { list.find(x => x.id === me.id).profileHidden = hidden; });
+      return J({ ok: 1, profileHidden: hidden });
+    }
+    const pm = path.match(/^\/profile\/([\w-]+)$/);
+    if (pm && m === 'GET') {
+      const t = us.find(x => x.id === pm[1]);
+      if (!t || (!t.active && me.role !== 'admin')) throw H('Profile not found', 404);
+      const pr = t.id === me.id ? { t: Date.now() } : await st.get('pres:' + t.id, { type: 'json' });
+      const online = !!pr && Date.now() - pr.t < ONLINE_MS;
+      const base = { id: t.id, name: t.name || t.username, role: t.role, online, mine: t.id === me.id, hiddenByUser: !!t.profileHidden };
+      if (!canSee(t, me)) return J({ ...base, hidden: true });
+      const tags = await tagsRaw(st);
+      return J({ ...base, hidden: false, username: t.username, avatarAt: t.avatarAt || 0, created: t.created || 0, lastSeen: pr ? pr.t : 0,
+        tagNames: (t.tagIds || []).map(id => tags.find(x => x.id === id)?.name).filter(Boolean),
+        hostNames: t.role === 'staff' ? t.hostIds.map(id => us.find(x => x.id === id)?.name).filter(Boolean) : [] });
     }
 
     // ----- group chat (floating dock) -----
@@ -258,12 +283,13 @@ export default async (req) => {
       // "hot" = ms since the last sign of a live conversation (a new message, or someone else typing). The browser polls faster only while the chat is hot.
       const typingNow = on.some(u => u.id !== me.id && pres[u.id].ty?.c === ch && now - pres[u.id].ty.t < TYPING_MS);
       const hot = typingNow ? 0 : newest ? Math.max(0, now - newest) : 1e9;
-      const card = u => ({ id: u.id, name: u.name || u.username, role: u.role, avatarAt: u.avatarAt || 0 });
+      const card = u => ({ id: u.id, name: u.name || u.username, role: u.role, avatarAt: avAt(u, me) });
       return J({
-        me: card(me), ch, rev, hot, channels, avs: Object.fromEntries(us.filter(u => u.avatarAt).map(u => [u.id, u.avatarAt])),   // current photo version per person, so chat avatars refresh even when no message changed
+        me: card(me), ch, rev, hot, channels, avs: Object.fromEntries(us.filter(u => avAt(u, me)).map(u => [u.id, u.avatarAt])),   // current photo version per person, so chat avatars refresh even when no message changed
          ...(msgs ? { msgs } : {}),
         online: on.sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || (a.name || '').localeCompare(b.name || '')).map(u => ({ ...card(u), typing: u.id !== me.id && pres[u.id].ty?.c === ch && now - pres[u.id].ty.t < TYPING_MS })),
         offline: people.length - on.length,
+        offUsers: people.filter(u => !on.includes(u)).sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || (a.name || '').localeCompare(b.name || '')).map(card),
       });
     }
     if (path === '/chat/send' && m === 'POST') {

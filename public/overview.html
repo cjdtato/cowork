@@ -5,13 +5,14 @@
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="chat.css">
 <style>
-.ctl{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--gap);margin-top:14px}
+.ctl{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--gap)}
 .ctl label{display:grid;gap:4px;font-size:.68rem;font-weight:800;text-transform:uppercase;opacity:.9}
 .ctl select{width:100%}
 .seg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;background:var(--soft);border:1px solid var(--bd);border-radius:var(--r);max-width:1100px;margin:0 auto 14px}
-.seg button{min-height:40px;border:0;border-radius:10px;background:transparent;font-weight:800;opacity:.7}
+.seg button{min-height:40px;border:0;border-radius:10px;background:transparent;font-weight:800;opacity:.7;display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;min-width:0}
+@media(max-width:700px){.seg button{font-size:.74rem;padding:0 4px;gap:4px}}
 .seg button.on{background:var(--acc);color:var(--acci);opacity:1}
-.ulist{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.ulist{display:flex;flex-wrap:wrap;gap:8px}
 .up{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0 12px;border:2px solid var(--bd);border-radius:99px;background:var(--soft);font-size:.78rem;font-weight:800}
 .up b{color:var(--ink);background:var(--panel);border:1px solid var(--bd);border-radius:99px;padding:0 8px;font-size:.7rem}
 .up.on{border-color:var(--acc);background:var(--acc);color:var(--acci)}
@@ -35,11 +36,11 @@
   <div class="toolbar">
     <a class="mini" href="index.html">← Back to calendar</a>
     <span class="ro">👁 View only</span>
-    <div class="stats">
-      <div class="stat"><b id="cUsers">0</b>Users</div>
-      <div class="stat"><b id="cNotes">0</b>Notes shown</div>
-      <div class="stat"><b id="cAll">0</b>Total</div>
-    </div>
+  </div>
+  <div class="stats">
+    <div class="stat"><b id="cUsers">0</b>Users</div>
+    <div class="stat"><b id="cNotes">0</b>Notes shown</div>
+    <div class="stat"><b id="cAll">0</b>Total</div>
   </div>
   <div class="ctl">
     <label>Show<select id="fSrc"><option value="all">Both</option><option value="personal">Personal</option><option value="shared">Shared</option></select></label>
