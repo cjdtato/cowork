@@ -118,7 +118,7 @@
     });
     log.className = 'cw-log' + (S.msgs.length ? ' has' : '');
     log.innerHTML = h;
-    log.querySelectorAll('.cw-av').forEach(el => el.replaceWith(avatar(S.msgs[el.dataset.i])));
+    log.querySelectorAll('.cw-av').forEach(el => { const m = S.msgs[el.dataset.i]; el.replaceWith(avatar({ id: m.uid, name: m.name, avatarAt: m.avatarAt })); });   // a message's own id is NOT the sender's id: pass the sender (uid) or the photo URL 404s and only initials show
     if (stick || near) log.scrollTop = log.scrollHeight;
   }
   function renderMembers() {

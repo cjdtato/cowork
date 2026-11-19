@@ -2,11 +2,11 @@
 <html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Log in · Co-Work</title>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400..700&family=Quicksand:wght@400..700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css"></head>
+<link rel="icon" type="image/svg+xml" href="logo.svg"><link rel="stylesheet" href="style.css"></head>
 <body class="th-white" style="display:flex;align-items:center;justify-content:center;padding-top:max(14px,env(safe-area-inset-top))">
 <script src="auth.js"></script>
 <form class="panel" id="f" style="width:100%;max-width:380px;display:grid;gap:10px;margin:0">
-  <div style="text-align:center"><div style="font-size:2.4rem">🗓️</div><h1>Co-Work</h1><p class="sub">Log in to open your calendar</p></div>
+  <div style="text-align:center"><svg class="logo big" style="width:64px;height:64px;margin-bottom:6px" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="lglogo big" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--acc)"/><stop offset="1" style="stop-color:var(--acc);stop-opacity:.72"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(#lglogo big)"/><rect x="12" y="16" width="40" height="36" rx="7" fill="#fff"/><path d="M12 23a7 7 0 0 1 7-7h26a7 7 0 0 1 7 7v3H12z" fill="#000" fill-opacity=".16"/><rect x="21" y="10" width="5" height="12" rx="2.5" fill="#fff"/><rect x="38" y="10" width="5" height="12" rx="2.5" fill="#fff"/><path d="M23 38.5l6.5 6.5L42 32" fill="none" stroke="var(--acc)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg><h1 class="logo-h" style="justify-content:center"><span class="wm">Co<b>-</b>Work</span></h1><p class="sub"><i>your cowork choice!</i></p><p class="sub">Version 1.0.0</p></div>
   <input id="u" placeholder="Username" enterkeyhint="next" autocomplete="username" autocapitalize="none" required autofocus>
   <input id="p" type="password" placeholder="Password" autocomplete="current-password" required>
   <div id="err" class="bad" style="font-size:.78rem;font-weight:700;min-height:1.2em"></div>

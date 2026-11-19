@@ -33,3 +33,20 @@
 ## Tests
 - `npm test`: all existing checks pass, plus one for the new `hot` chat field.
 - The repeating pane was checked in a real browser (Chromium) with a mocked API: correct weekdays and counts, holiday skipping, exactly one save request, new IDs unique, button hidden on Shared, validation messages, Esc closes, no console errors.
+
+## 3. Profile pictures in chat messages
+
+**Cause.** In `public/chat.js`, the avatar for a message was built from the message object, so it asked the server for `/api/avatar/<message id>` instead of `/api/avatar/<sender's user id>`. That always returned 404, so only the initials showed. (The "Online now" list worked because those entries carry the user id.)
+
+**Fix.** `renderLog()` now passes the sender (`m.uid`, name, avatarAt) to `avatar()`. Anyone with a profile picture now shows it beside their messages; people without one still show initials. No server change.
+
+## 4. Repeating-task button no longer shifts the layout
+
+**Cause.** `.repbar` was a normal block (button height + 8px margin), so Personal mode was taller than before and Shared mode (button hidden) was not, pushing the calendar down and making it jump when switching modes.
+
+**Fix.** `public/style.css` only: `.repbar` now has height 0 and no margin, and the button floats over the existing "Tip: press P / S / T" row (right side on desktop). Every element keeps its original position in both modes. On phones (<=700px) the keyboard tip is hidden in Personal mode (its space is kept) and the button is centred there.
+
+## 5. Logo and taglines
+
+- Header tagline "Philippine calendar · tap a date..." and login line "Log in to open your calendar" replaced with italic *your cowork choice!*; "Version 1.0.0" (not italic) added: after it in the header, on its own line on the login page. Same single line height, so nothing shifts.
+- New logo: calendar-with-checkmark mark (inline SVG that follows the theme/mode accent colour) plus a "Co-Work" wordmark with an accent hyphen. Also used as the favicon (`public/logo.svg`). Replaces the 🗓️ emoji.
