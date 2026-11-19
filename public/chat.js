@@ -1,7 +1,8 @@
 /* Co-Work group chat — a floating dock in the bottom-right corner (Facebook style) with Discord-style content:
    channels, flat messages, a "who's online" member list. Drag the chat window and the member list pops out.
    Needs auth.js (api helper + theme). No websockets on Netlify, so it polls; the rates are in POLL below (each poll is one
-   function call, so lower rates = lighter Netlify usage). */
+   function call, so lower rates = lighter Netlify usage). While a conversation is live (a message or typing in the last HOT_MS)
+   the open chat polls every POLL.hot instead of POLL.open, so replies show up in ~2 s; once things go quiet it drops back to the slow rate. */
 (() => {
   if (window.__cw || /login\.html$/.test(location.pathname)) return;
   window.__cw = 1;
@@ -13,13 +14,14 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode: just don't remember */ } },
   };
   const isMobile = () => matchMedia('(max-width:700px)').matches;
-  const POLL = { open: 5000, minimized: 30000, hidden: 60000 };   // ms between polls: chat open · dock minimized · browser tab in the background
+  const POLL = { open: 5000, hot: 2000, minimized: 30000, hidden: 60000 };   // ms between polls: chat open · dock minimized · browser tab in the background
+  const HOT_MS = 45000;   // how long after the last message/typing the fast rate stays on
   const GROUPS = [['admin', 'Heads'], ['host', 'Supervisors'], ['staff', 'Staff']];
 
   /* ---------- state ---------- */
   const S = {
     open: LS.get('cw_open', false), ch: LS.get('cw_ch', 'general'), members: false,
-    me: null, channels: [], msgs: [], rev: -1, loaded: false, online: [], offline: 0, seen: LS.get('cw_seen', {}),
+    me: null, hot: 1e9, avs: {}, channels: [], msgs: [], rev: -1, loaded: false, online: [], offline: 0, seen: LS.get('cw_seen', {}),
     edit: null, pos: LS.get('cw_pos', null), lastType: 0, err: false,
     fresh: localStorage.getItem('cw_seen') === null,   // brand-new browser: existing messages start as "read"
   };
@@ -60,7 +62,8 @@
     d.className = 'av sm';
     d.style.background = `hsl(${hue(u.id)} 52% 40%)`; d.style.color = '#fff';
     d.textContent = String(u.name || '?').trim().split(/\s+/).slice(0, 2).map(w => [...w][0]).join('').toUpperCase() || '?';
-    if (u.avatarAt) { const i = new Image(); i.alt = ''; i.onload = () => { d.textContent = ''; d.append(i); }; i.src = '/api/avatar/' + encodeURIComponent(u.id) + '?v=' + u.avatarAt; }
+    const at = (S.avs && S.avs[u.id]) || u.avatarAt;   // newest photo version known, not the one baked into an old message
+    if (at) { const i = new Image(); i.alt = ''; i.onload = () => { d.textContent = ''; d.append(i); }; i.src = '/api/avatar/' + encodeURIComponent(u.id) + '?v=' + at; }
     return d;
   }
   function note(msg) {                       // short error line above the composer
@@ -77,18 +80,19 @@
     l.hidden = !S.me; l.innerHTML = `<i class="cw-dot"></i>${S.online.length}`; l.title = S.online.length + ' online';
   }
   function renderHead() {
-    $('#cwTitle').textContent = '# ' + S.ch;
+    const cur = S.channels.find(c => c.id === S.ch);
+    $('#cwTitle').textContent = (cur && cur.tag ? '🔒 ' : '') + '# ' + S.ch;
     $('#cwSub').innerHTML = S.err ? 'Reconnecting…' : S.me ? `<i class="cw-dot"></i>${S.online.length} online` : 'Connecting…';
     ta.placeholder = 'Message #' + S.ch;
   }
   function renderChans() {
-    const sig = JSON.stringify([S.ch, S.me && S.me.role, S.channels.map(c => [c.id, unreadOf(c)])]);
+    const sig = JSON.stringify([S.ch, S.me && S.me.role, S.channels.map(c => [c.id, unreadOf(c), c.tag])]);
     if (sig === sigC) return; sigC = sig;
-    const admin = S.me && S.me.role === 'admin';
+    const admin = S.me && S.me.role === 'admin', curTag = (S.channels.find(c => c.id === S.ch) || {}).tag;   // a role's channel is removed by deleting the role, not here
     $('#cwChans').innerHTML = S.channels.map(c => { const u = unreadOf(c);
-      return `<button type="button" class="cw-ch${c.id === S.ch ? ' on' : ''}" data-ch="${esc(c.id)}" aria-pressed="${c.id === S.ch}"># ${esc(c.name)}${u ? `<em class="cw-badge">${u}</em>` : ''}</button>`; }).join('')
+      return `<button type="button" class="cw-ch${c.id === S.ch ? ' on' : ''}" data-ch="${esc(c.id)}" aria-pressed="${c.id === S.ch}"${c.tag ? ' title="Private: only people with this role can see it"' : ''}>${c.tag ? '🔒 ' : ''}# ${esc(c.name)}${u ? `<em class="cw-badge">${u}</em>` : ''}</button>`; }).join('')
       + (admin ? '<button type="button" class="cw-ch ghost" data-a="add" title="Add a channel" aria-label="Add a channel">＋</button>' : '')
-      + (admin && S.ch !== 'general' ? '<button type="button" class="cw-ch ghost" data-a="rm" title="Remove this channel" aria-label="Remove this channel">🗑</button>' : '');
+      + (admin && S.ch !== 'general' && !curTag ? '<button type="button" class="cw-ch ghost" data-a="rm" title="Remove this channel" aria-label="Remove this channel">🗑</button>' : '');
   }
   function renderTyping() {
     const t = $('#cwTyping'); if (t.classList.contains('err')) return;
@@ -118,7 +122,7 @@
     if (stick || near) log.scrollTop = log.scrollHeight;
   }
   function renderMembers() {
-    const sig = JSON.stringify([S.me && S.me.id, S.online.map(u => [u.id, u.typing, u.avatarAt]), S.offline]);
+    const sig = JSON.stringify([S.me && S.me.id, S.online.map(u => [u.id, u.typing, (S.avs && S.avs[u.id]) || u.avatarAt]), S.offline]);
     if (sig === sigM) return; sigM = sig;
     let h = `<div class="cw-mh"><b>Online now</b><button class="cw-ib" type="button" data-a="closem" aria-label="Close list" title="Close">×</button></div>`;
     h += `<h4>Online — ${S.online.length}</h4>`;
@@ -193,7 +197,7 @@
   addEventListener('resize', applyPos);
 
   /* ---------- polling ---------- */
-  const delay = () => fails ? Math.min(30000, 4000 * 2 ** Math.min(fails, 3)) : document.hidden ? POLL.hidden : S.open ? POLL.open : POLL.minimized;
+  const delay = () => fails ? Math.min(30000, 4000 * 2 ** Math.min(fails, 3)) : document.hidden ? POLL.hidden : S.open ? (S.hot < HOT_MS ? POLL.hot : POLL.open) : POLL.minimized;
   function schedule(ms) { clearTimeout(timer); timer = setTimeout(poll, ms == null ? delay() : ms); }
   async function poll() {
     if (busy) return;
@@ -208,11 +212,15 @@
     finally { busy = false; schedule(); }
   }
   function apply(d) {
+    const avChanged = JSON.stringify(d.avs || {}) !== JSON.stringify(S.avs);
+    S.avs = d.avs || {};
+    S.hot = typeof d.hot === 'number' ? d.hot : 1e9;
     S.me = d.me; S.channels = d.channels; S.online = d.online; S.offline = d.offline;
     d.channels.forEach(c => { if (S.seen[c.id] == null) S.seen[c.id] = S.fresh ? c.last : 0; });   // new browser: all read · channel created later: everything in it is unread
     S.fresh = false;
     if (!d.channels.some(c => c.id === S.ch)) { S.ch = d.channels[0].id; S.rev = -1; S.msgs = []; S.loaded = false; LS.set('cw_ch', S.ch); }   // my channel was removed
     if (S.open && d.ch === S.ch && d.msgs) { S.msgs = d.msgs; S.rev = d.rev; S.loaded = true; renderLog(); }
+    else if (S.open && S.loaded && avChanged) renderLog();   // someone's photo changed: redraw the avatars
     if (S.open && S.loaded && !document.hidden) {
       const c = d.channels.find(x => x.id === S.ch);
       if (c && S.seen[c.id] !== c.last) { S.seen[c.id] = c.last; }
@@ -246,7 +254,7 @@
         if (ch === S.ch && !S.msgs.some(x => x.id === m.id)) S.msgs.push(m);   // a poll may already have brought it in
         ta.value = '';
       }
-      autosize(); renderLog(true); schedule(1500);
+      S.hot = 0; autosize(); renderLog(true); schedule(1500);
     } catch (e) { if (e.status === 401) return location.replace('login.html'); note(e.message); }
     finally { sending = false; }
   }

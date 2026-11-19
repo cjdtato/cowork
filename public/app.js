@@ -68,7 +68,7 @@ function setMode(m){
 }
 document.querySelectorAll('.mode').forEach(b=>b.onclick=()=>{if(!openDate)setMode(b.dataset.mode)});
 document.addEventListener('keydown',e=>{
-  if(e.ctrlKey||e.metaKey||e.altKey||openDate||!$('#acct').hidden||!$('#prof').hidden||/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))return;
+  if(e.ctrlKey||e.metaKey||e.altKey||openDate||!$('#acct').hidden||!$('#prof').hidden||($('#rep')&&!$('#rep').hidden)||/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))return;
   const k=e.key.toLowerCase();
   if(k==='p')setMode('personal');else if(k==='s')setMode('shared');else if(k==='t')$('#goToday').click();
 });

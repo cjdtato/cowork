@@ -41,8 +41,18 @@ netlify dev
 ```
 npm test
 ```
-Runs 81 checks against the real API with an in-memory stand-in for Netlify Blobs (no network, no extra dependencies).
+Runs 111 checks against the real API with an in-memory stand-in for Netlify Blobs (no network, no extra dependencies).
 See `IMPROVEMENTS.md` for the review, the logout fix, and what changed in v2.2.
+
+## Custom roles & private role chats
+Besides Head / Supervisor / Staff, a Head can create any number of **custom roles** (e.g. `DSD`) on the **Users** page and give them to as many people as they like.
+- **Create:** Users → *Custom roles* → type a name → **Create role**. Up to 20 roles.
+- **Give it to people:** tick it in a user's *Add / Edit* form, or click **👥 Members** on the role to tick many people at once.
+- **Chat:** every role gets a private channel named `<role>-chat` (e.g. `🔒 # dsd-chat`). Only people holding the role can see it, read it, post in it, or see its unread badge. Removing someone from the role removes the channel from them on their next refresh.
+- **Heads are not added automatically.** A Head who isn't tagged can't see a role channel (tag yourself to join). Heads can't delete a role channel directly; **deleting the role** deletes its channel and messages.
+- Role channels don't count toward the 6-channel limit. Inside a role channel the *Online now* list shows only that role's members.
+- Backups (v5) include the roles and who holds them; chat messages are still not part of a backup. Older backups restore fine (current roles are kept).
+- Storage: `tags` = `[{id,name}]`, `users[].tagIds`, and role channels are entries in `chat:channels` with a `tag` field. API: `GET/POST /api/tags`, `PUT /api/tags/<id>` (`{userIds}`), `DELETE /api/tags/<id>`; `tagIds` is accepted by `POST/PUT /api/users`.
 
 ## Group chat
 A small 💬 **Group chat** pill sits in the bottom-right corner of every page (like the Facebook chat dock). Click it to open the chat, or drag it anywhere you like (position is remembered).
@@ -54,12 +64,17 @@ A small 💬 **Group chat** pill sits in the bottom-right corner of every page (
 - Storage (same `taskboard` blob store): `chat:channels`, `chat:<channel>`, `pres:<userId>`. Chat is not part of the Users-page backup/restore.
 - Files: `public/chat.js`, `public/chat.css`, chat routes in `api.mjs`, plus `GET /api/avatar/<id>` so teammates' profile pictures show in the chat.
 
+## Log repeating task (Personal calendar)
+On the **Personal** calendar a **🔁 Log repeating task** button sits just above the keyboard-shortcut tip (it is hidden on Shared). It opens a pane where you enter a title (and optional description / priority), a **start** and **end** date, and the **weekdays** to repeat on (quick presets: Weekdays, M·W·F, T·Th, Every day). A live line shows how many sticky notes will be created; optionally skip Philippine holidays. **Create notes** adds one normal sticky note per matching day (max 366 days per run).
+- Speed: the pane is built only when first opened; all notes are created in memory and saved with **one** `PUT /api/board` request, then the calendar redraws once. No server change.
+- Files: `public/repeat.js` (logic), a button in `public/index.html`, styles at the end of `public/style.css`. Details in `CHANGES.md`.
+
 ## Upgrading from the earlier calendar-only version
 Same storage name, so existing accounts and personal boards carry over. Old `user` accounts become **Staff**; everyone is logged out once (new cookie sessions). Existing admin passwords are unchanged (`ADMIN_INITIAL_PASSWORD` is only used when no users exist yet).
 
 ## Layout
 ```
-public/                static site (index, login, users, app.js, style.css)
+public/                static site (index, login, users, app.js, repeat.js, style.css)
 netlify/functions/api.mjs   API at /api/*  (Netlify Blobs storage)
 ```
 Data keys in the `taskboard` blob store: `users`, `shared`, `board:<userId>` (includes a `rev` revision number), `sess:<token>` (includes the user's password version `pv`).

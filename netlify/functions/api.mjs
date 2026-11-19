@@ -27,6 +27,9 @@ const MAX_FAILS = 5, LOCK_MS = 15 * 60 * 1000;
 const CH_ID = /^[a-z0-9-]{1,24}$/, CHAT_MAX = 300, CHAT_SHOW = 80, MAX_CH = 6;   // group chat: channel slug, messages kept per channel, messages sent per poll, channel cap
 const ONLINE_MS = 75e3, TYPING_MS = 7e3;                                          // "online" = polled in the last 75 s (a background tab polls every 60 s); "typing" = typed in the last 7 s
 const ROLE_ORDER = { admin: 0, host: 1, staff: 2 };
+const MAX_TAGS = 20, TAG_ID = /^[a-z0-9-]{1,18}$/;   // custom roles ("tags"): id = slug of the name; each one owns a private chat channel called <id>-chat (<= 23 chars)
+const slug = (v, n) => String(v || '').trim().toLowerCase().replace(/[\s_]+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-+/, '').slice(0, n).replace(/-+$/, '');
+const tagChan = id => id + '-chat';
 
 // ---------- storage helpers ----------
 // Read-modify-write with optimistic concurrency (retries if someone else wrote first).
@@ -42,7 +45,7 @@ async function mutate(st, key, init, fn) {
   throw H('Busy, please try again.', 409);
 }
 
-const normUser = u => ({ ...u, role: ROLES.includes(u.role) ? u.role : 'staff', hostIds: Array.isArray(u.hostIds) ? u.hostIds : [], pv: Number.isInteger(u.pv) ? u.pv : 0 });
+const normUser = u => ({ ...u, role: ROLES.includes(u.role) ? u.role : 'staff', hostIds: Array.isArray(u.hostIds) ? u.hostIds : [], tagIds: Array.isArray(u.tagIds) ? uniq(u.tagIds) : [], pv: Number.isInteger(u.pv) ? u.pv : 0 });
 
 async function usersInit() {
   const pw = process.env.ADMIN_INITIAL_PASSWORD;
@@ -58,10 +61,23 @@ async function getUsers(st) {
 const mutUsers = (st, fn) => mutate(st, 'users', usersInit, us => { us.forEach(u => Object.assign(u, normUser(u))); return fn(us); });
 const mutShared = (st, fn) => mutate(st, 'shared', () => ({ tasks: [] }), fn);
 
+// ---------- custom roles ("tags") ----------
+// Storage: tags = [{id,name}] · users[].tagIds = [tagId] · chat:channels entries with a `tag` field are private to people holding that tag.
+const tagsRaw = async st => (await st.get('tags', { type: 'json' })) || [];
+const mutTags = (st, fn) => mutate(st, 'tags', () => [], fn);
+const cleanTags = (ids, tags) => uniq(ids).filter(id => tags.some(t => t.id === id));
+// Make chat:channels match the tag list (one <id>-chat channel per tag, none for deleted tags). Returns the channel ids it removed.
+const ensureTagChannels = (st, tags) => mutate(st, 'chat:channels', () => [{ id: 'general', name: 'general' }], list => {
+  const gone = [];
+  for (let i = list.length - 1; i >= 0; i--) if (list[i].tag && !tags.some(t => t.id === list[i].tag)) gone.push(list.splice(i, 1)[0].id);
+  for (const t of tags) if (!list.some(c => c.tag === t.id)) list.push({ id: tagChan(t.id), name: tagChan(t.id), tag: t.id });
+  return gone;
+});
+
 const pub = (u, all) => ({
   id: u.id, username: u.username, name: u.name, role: u.role, active: u.active, created: u.created, mustChange: !!u.mustChange,
   avatarAt: u.avatarAt || 0, avatarNext: u.avatarAt ? u.avatarAt + AVATAR_COOLDOWN : 0,
-  hostIds: u.role === 'staff' ? u.hostIds : [],
+  hostIds: u.role === 'staff' ? u.hostIds : [], tagIds: u.tagIds || [],
   hostNames: u.role === 'staff' ? u.hostIds.map(id => all.find(x => x.id === id)?.name).filter(Boolean) : [],
 });
 const activeAdmins = us => us.filter(u => u.role === 'admin' && u.active).length;
@@ -112,7 +128,8 @@ function cleanBoard(b) {
 
 // ---------- group chat ----------
 // Storage: chat:channels = [{id,name}] · chat:<channel> = { rev, msgs[] } (rev bumps on every send/edit/delete) · pres:<userId> = { t, ty } (heartbeat + typing)
-const chanList = async st => (await st.get('chat:channels', { type: 'json' })) || [{ id: 'general', name: 'general' }];
+const chanRaw = async st => (await st.get('chat:channels', { type: 'json' })) || [{ id: 'general', name: 'general' }];
+const chanList = async (st, me) => (await chanRaw(st)).filter(c => !c.tag || me.tagIds.includes(c.tag));   // a role's channel exists only for people holding that role (Heads included: they must tag themselves to join)
 const mutChat = (st, ch, fn) => mutate(st, 'chat:' + ch, () => ({ rev: 0, msgs: [] }), fn);
 const chatMsg = (m, me, us) => {
   const u = us.find(x => x.id === m.uid);
@@ -215,30 +232,42 @@ export default async (req) => {
     // ----- group chat (floating dock) -----
     if (path === '/chat' && m === 'GET') {
       const q = new URL(req.url).searchParams, now = Date.now();
-      const chans = await chanList(st);
+      const chans = await chanList(st, me);
       const ch = chans.find(c => c.id === q.get('ch'))?.id || null;
       const ty = chans.find(c => c.id === q.get('typing'))?.id || null;
-      await st.setJSON('pres:' + me.id, { t: now, ty: ty ? { c: ty, t: now } : null });                 // heartbeat: one key per person, so polls never collide
-      const people = us.filter(u => u.active);
-      const pres = Object.fromEntries(await Promise.all(people.map(async u => [u.id, u.id === me.id ? { t: now, ty: ty ? { c: ty, t: now } : null } : await st.get('pres:' + u.id, { type: 'json' })])));
+      const chTag = chans.find(c => c.id === ch)?.tag || null;                                          // in a role channel, "online" lists only that role's members
+      const people = us.filter(u => u.active && (!chTag || u.tagIds.includes(chTag)));
+      const mePres = { t: now, ty: ty ? { c: ty, t: now } : null };
+      // Everything below is independent, so run it all at once instead of one blob read after another (this was most of the server-side delay).
+      const [, presList, datas] = await Promise.all([
+        st.setJSON('pres:' + me.id, mePres),                                                              // heartbeat: one key per person, so polls never collide
+        Promise.all(people.map(async u => [u.id, u.id === me.id ? mePres : await st.get('pres:' + u.id, { type: 'json' })])),
+        Promise.all(chans.map(c => st.get('chat:' + c.id, { type: 'json' }))),
+      ]);
+      const pres = Object.fromEntries(presList);
       const on = people.filter(u => pres[u.id] && now - pres[u.id].t < ONLINE_MS);
       const seen = parseSeen(q.get('seen')), unseen = q.get('seen') ? 0 : Infinity;   // no 'seen' at all = brand-new browser (nothing unread); a channel missing from a known list = created since, so all of it is unread
-      let rev = 0, msgs;
+      let rev = 0, msgs, newest = 0;
       const channels = [];
-      for (const c of chans) {
-        const d = (await st.get('chat:' + c.id, { type: 'json' })) || { rev: 0, msgs: [] };
-        channels.push({ id: c.id, name: c.name, last: d.msgs.at(-1)?.ts || 0, unread: Math.min(99, d.msgs.filter(x => x.uid !== me.id && x.ts > (seen[c.id] ?? unseen)).length) });
+      chans.forEach((c, i) => {
+        const d = datas[i] || { rev: 0, msgs: [] };
+        const last = d.msgs.at(-1)?.ts || 0; newest = Math.max(newest, last);
+        channels.push({ id: c.id, name: c.name, tag: c.tag || null, last, unread: Math.min(99, d.msgs.filter(x => x.uid !== me.id && x.ts > (seen[c.id] ?? unseen)).length) });
         if (c.id === ch) { rev = d.rev || 0; if (rev !== Number(q.get('rev'))) msgs = d.msgs.slice(-CHAT_SHOW).map(x => chatMsg(x, me, us)); }
-      }
+      });
+      // "hot" = ms since the last sign of a live conversation (a new message, or someone else typing). The browser polls faster only while the chat is hot.
+      const typingNow = on.some(u => u.id !== me.id && pres[u.id].ty?.c === ch && now - pres[u.id].ty.t < TYPING_MS);
+      const hot = typingNow ? 0 : newest ? Math.max(0, now - newest) : 1e9;
       const card = u => ({ id: u.id, name: u.name || u.username, role: u.role, avatarAt: u.avatarAt || 0 });
       return J({
-        me: card(me), ch, rev, channels, ...(msgs ? { msgs } : {}),
+        me: card(me), ch, rev, hot, channels, avs: Object.fromEntries(us.filter(u => u.avatarAt).map(u => [u.id, u.avatarAt])),   // current photo version per person, so chat avatars refresh even when no message changed
+         ...(msgs ? { msgs } : {}),
         online: on.sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || (a.name || '').localeCompare(b.name || '')).map(u => ({ ...card(u), typing: u.id !== me.id && pres[u.id].ty?.c === ch && now - pres[u.id].ty.t < TYPING_MS })),
         offline: people.length - on.length,
       });
     }
     if (path === '/chat/send' && m === 'POST') {
-      const ch = (await chanList(st)).find(c => c.id === body.ch)?.id;
+      const ch = (await chanList(st, me)).find(c => c.id === body.ch)?.id;
       if (!ch) throw H('Channel not found', 404);
       const text = chatText(body.text);
       let msg;
@@ -250,7 +279,7 @@ export default async (req) => {
     }
     const cm = path.match(/^\/chat\/msg\/([\w-]+)$/);
     if (cm && (m === 'PUT' || m === 'DELETE')) {
-      const ch = (await chanList(st)).find(c => c.id === new URL(req.url).searchParams.get('ch'))?.id;
+      const ch = (await chanList(st, me)).find(c => c.id === new URL(req.url).searchParams.get('ch'))?.id;
       if (!ch) throw H('Channel not found', 404);
       const text = m === 'PUT' ? chatText(body.text) : '';
       const out = await mutChat(st, ch, d => {
@@ -268,7 +297,7 @@ export default async (req) => {
       if (!CH_ID.test(id)) throw H('Channel name: letters, numbers and dashes.');
       await mutate(st, 'chat:channels', () => [{ id: 'general', name: 'general' }], list => {
         if (list.some(c => c.id === id)) throw H('That channel already exists.');
-        if (list.length >= MAX_CH) throw H(`You can have up to ${MAX_CH} channels.`);
+        if (list.filter(c => !c.tag).length >= MAX_CH) throw H(`You can have up to ${MAX_CH} channels (role channels don't count).`);
         list.push({ id, name: id });
       });
       return J({ ok: 1, id }, 201);
@@ -280,6 +309,7 @@ export default async (req) => {
       await mutate(st, 'chat:channels', () => [{ id: 'general', name: 'general' }], list => {
         const i = list.findIndex(c => c.id === chm[1]);
         if (i < 0) throw H('Channel not found', 404);
+        if (list[i].tag) throw H('This channel belongs to a custom role. Delete the role (Users page) to remove it.');
         list.splice(i, 1);
       });
       await st.delete('chat:' + chm[1]);
@@ -375,11 +405,12 @@ export default async (req) => {
       if (!UN.test(un)) throw H('Username: 3–30 letters, numbers, . _ -');
       if (String(body.password || '').length < 6) throw H('Password must be at least 6 characters.');
       const role = ROLES.includes(body.role) ? body.role : 'staff';
+      const tags = await tagsRaw(st);
       await mutUsers(st, list => {
         if (list.some(x => x.username === un)) throw H('Username already exists.');
         const salt = randomBytes(8).toString('hex');
         const hostIds = role === 'staff' ? uniq(body.hostIds).filter(id => list.some(h => h.id === id && h.role === 'host')) : [];
-        list.push({ id: 'u_' + randomBytes(6).toString('hex'), username: un, name: String(body.name || '').trim().slice(0, 60) || un, role, active: body.active !== false, salt, hash: hp(body.password, salt), created: today(), hostIds, mustChange: true });
+        list.push({ id: 'u_' + randomBytes(6).toString('hex'), username: un, name: String(body.name || '').trim().slice(0, 60) || un, role, active: body.active !== false, salt, hash: hp(body.password, salt), created: today(), hostIds, tagIds: cleanTags(body.tagIds, tags), mustChange: true });
       });
       return J({ ok: 1 });
     }
@@ -388,6 +419,7 @@ export default async (req) => {
       const id = um[1];
       if (m === 'PUT') {
         let selfPv = null;
+        const tags = await tagsRaw(st);
         await mutUsers(st, list => {
           const u = list.find(x => x.id === id);
           if (!u) throw H('User not found', 404);
@@ -396,6 +428,7 @@ export default async (req) => {
           if (u.role === 'admin' && u.active && (role !== 'admin' || !active) && activeAdmins(list) < 2) throw H('Keep at least one active admin.');
           u.name = String(body.name || '').trim().slice(0, 60) || u.username; u.role = role; u.active = active;
           u.hostIds = role === 'staff' ? uniq(body.hostIds).filter(h => list.some(x => x.id === h && x.role === 'host')) : [];
+          if ('tagIds' in body) u.tagIds = cleanTags(body.tagIds, tags);   // omitted = keep their roles as they are
           if (body.password) {
             if (String(body.password).length < 6) throw H('Password must be at least 6 characters.');
             u.salt = randomBytes(8).toString('hex'); u.hash = hp(body.password, u.salt); u.pv = (u.pv || 0) + 1;
@@ -424,17 +457,61 @@ export default async (req) => {
         return J({ ok: 1 });
       }
     }
+    // ----- custom roles (tags): admin creates them, hands them to many users; each gets a private <name>-chat channel -----
+    if (path === '/tags' && m === 'GET') {
+      return J({ tags: (await tagsRaw(st)).map(t => ({ id: t.id, name: t.name, channel: tagChan(t.id), members: us.filter(u => u.tagIds.includes(t.id)).length })) });
+    }
+    if (path === '/tags' && m === 'POST') {
+      const name = String(body.name || '').trim().slice(0, 30), id = slug(name, 18);
+      if (!TAG_ID.test(id)) throw H('Role name: letters, numbers and dashes (e.g. DSD).');
+      if ((await chanRaw(st)).some(c => c.id === tagChan(id) && c.tag !== id)) throw H(`A channel called ${tagChan(id)} already exists. Remove it first or pick another role name.`);
+      let tags;
+      await mutTags(st, list => {
+        if (list.some(t => t.id === id)) throw H('That role already exists.');
+        if (list.length >= MAX_TAGS) throw H(`You can have up to ${MAX_TAGS} custom roles.`);
+        list.push({ id, name }); tags = [...list];
+      });
+      await ensureTagChannels(st, tags);
+      return J({ ok: 1, id, channel: tagChan(id) }, 201);
+    }
+    const tm = path.match(/^\/tags\/([a-z0-9-]+)$/);
+    if (tm && m === 'PUT') {   // set exactly who holds this role: { userIds: [...] }
+      if (!(await tagsRaw(st)).some(t => t.id === tm[1])) throw H('Role not found', 404);
+      const want = new Set(uniq(body.userIds));
+      await mutUsers(st, list => list.forEach(u => {
+        const has = u.tagIds.includes(tm[1]);
+        if (want.has(u.id) && !has) u.tagIds.push(tm[1]); else if (!want.has(u.id) && has) u.tagIds = u.tagIds.filter(x => x !== tm[1]);
+      }));
+      return J({ ok: 1 });
+    }
+    if (tm && m === 'DELETE') {
+      const tags = await mutTags(st, list => {
+        const i = list.findIndex(t => t.id === tm[1]);
+        if (i < 0) throw H('Role not found', 404);
+        list.splice(i, 1); return [...list];
+      });
+      await mutUsers(st, list => list.forEach(u => { u.tagIds = u.tagIds.filter(x => x !== tm[1]); }));
+      for (const c of await ensureTagChannels(st, tags)) await st.delete('chat:' + c);   // the role's channel and its messages go with it
+      return J({ ok: 1 });
+    }
+
     if (path === '/backup' && m === 'GET') {
       const boards = {};
       for (const u of us) { const b = await st.get('board:' + u.id, { type: 'json' }); if (b) boards[u.id] = b; }
-      return J({ version: 4, exportedAt: new Date().toISOString(), users: us, boards, shared: (await st.get('shared', { type: 'json' })) || { tasks: [] } });
+      return J({ version: 5, exportedAt: new Date().toISOString(), users: us, tags: await tagsRaw(st), boards, shared: (await st.get('shared', { type: 'json' })) || { tasks: [] } });
     }
     if (path === '/backup' && m === 'POST') {
-      if (![3, 4].includes(body.version) || !Array.isArray(body.users)) throw H('Invalid backup file');
+      if (![3, 4, 5].includes(body.version) || !Array.isArray(body.users)) throw H('Invalid backup file');
+      const tags = Array.isArray(body.tags)
+        ? body.tags.map(t => ({ id: String(t?.id || ''), name: String(t?.name || '').trim().slice(0, 30) })).filter((t, i, a) => TAG_ID.test(t.id) && t.name && a.findIndex(x => x.id === t.id) === i).slice(0, MAX_TAGS)
+        : await tagsRaw(st);   // older backups have no roles: keep the current ones
       const users = body.users.map(normUser);
+      users.forEach(u => { u.tagIds = cleanTags(u.tagIds, tags); });
       if (!users.some(u => u.role === 'admin' && u.active)) throw H('Backup must contain an active admin.');
       for (const u of us) await st.delete('board:' + u.id);
       await st.setJSON('users', users);
+      await st.setJSON('tags', tags);
+      for (const c of await ensureTagChannels(st, tags)) await st.delete('chat:' + c);
       for (const [id, b] of Object.entries(body.boards || {})) if (Array.isArray(b?.tasks)) await st.setJSON('board:' + String(id).replace(/[^\w-]/g, ''), cleanBoard(b));
       await st.setJSON('shared', { tasks: Array.isArray(body.shared?.tasks) ? body.shared.tasks : [] });
       return J({ ok: 1 });
