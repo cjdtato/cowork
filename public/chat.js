@@ -42,12 +42,24 @@
   <div class="cw-log" id="cwLog" role="log" aria-live="polite" tabindex="0"></div>
   <div class="cw-typing" id="cwTyping" aria-live="polite"></div>
   <div class="cw-edit" id="cwEdit" hidden><span>✎ Editing your message</span><button type="button" id="cwEditX">Cancel</button></div>
-  <form class="cw-form" id="cwForm"><textarea id="cwText" rows="1" maxlength="1000" placeholder="Message" aria-label="Message"></textarea><button class="btn pri cw-send" type="submit" aria-label="Send message">➤</button></form>
+  <div class="cw-emo" id="cwEmo" role="group" aria-label="Emoji" hidden>${["🙂","😂","👍","🙏","❤️","🎉","👀","✅","🔥","😅","🤝","💡"].map(e=>`<button type="button" aria-label="${e}">${e}</button>`).join("")}</div>
+  <form class="cw-form" id="cwForm"><button class="cw-emob" id="cwEmoBtn" type="button" aria-label="Add emoji" aria-expanded="false" title="Emoji">🙂</button><textarea id="cwText" rows="1" maxlength="1000" placeholder="Message" aria-label="Message"></textarea><button class="btn pri cw-send" type="submit" aria-label="Send message">➤</button></form>
 </section>
 <aside class="cw-mem" id="cwMembers" aria-label="Online now" hidden></aside>`;
   document.body.append(root);
   document.body.classList.add('cw-on');
   const win = $('#cwWin'), mem = $('#cwMembers'), log = $('#cwLog'), ta = $('#cwText');
+
+  /* ---------- emoji picker ---------- */
+  const emo = $('#cwEmo'), emoBtn = $('#cwEmoBtn');
+  emoBtn.onclick = () => { emo.hidden = !emo.hidden; emoBtn.setAttribute('aria-expanded', String(!emo.hidden)); };
+  emo.onclick = e => {
+    const b = e.target.closest('button'); if (!b) return;
+    const s = ta.selectionStart ?? ta.value.length, en = ta.selectionEnd ?? s;
+    ta.value = ta.value.slice(0, s) + b.textContent + ta.value.slice(en);
+    ta.focus(); ta.selectionStart = ta.selectionEnd = s + b.textContent.length;
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+  };
 
   /* ---------- helpers ---------- */
   const tf = new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' });

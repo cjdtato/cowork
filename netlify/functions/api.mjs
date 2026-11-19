@@ -16,7 +16,7 @@ const uniq = a => [...new Set(Array.isArray(a) ? a.map(String) : [])];
 const ROLES = ['admin', 'host', 'staff'];            // admin = head, host = supervisor, staff
 const DEFAULT_ADMIN = 'u_admin';                       // only the original admin account may use the all-users overview
 const PRIORITIES = ['Now', 'Next', 'Later'];
-const THEMES = ['white', 'dark', 'pink', 'cepalco'];
+const THEMES = ['white', 'dark', 'midnight', 'graphite', 'ocean', 'forest', 'lavender', 'sunset', 'sand', 'pink', 'cepalco'];
 const PALETTE = { Now: ['#cbfec9', '#ebd3ff', '#dfc3ff'], Next: ['#fff3a1', '#c3e2ff'], Later: ['#ffd1ea', '#cbfec9'] };
 const UN = /^[a-z0-9_.-]{3,30}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;

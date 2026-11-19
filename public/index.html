@@ -18,27 +18,24 @@
 <header class="panel top">
   <div class="brand">
     <h1 class="logo-h"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="lglogo" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--acc)"/><stop offset="1" style="stop-color:var(--acc);stop-opacity:.72"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(#lglogo)"/><rect x="12" y="16" width="40" height="36" rx="7" fill="#fff"/><path d="M12 23a7 7 0 0 1 7-7h26a7 7 0 0 1 7 7v3H12z" fill="#000" fill-opacity=".16"/><rect x="21" y="10" width="5" height="12" rx="2.5" fill="#fff"/><rect x="38" y="10" width="5" height="12" rx="2.5" fill="#fff"/><path d="M23 38.5l6.5 6.5L42 32" fill="none" stroke="var(--acc)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="wm">Co<b>-</b>Work</span></h1>
-    <p class="sub"><i>your cowork choice!</i> · Version 1.0.0</p>
+    <p class="sub"><i>your cowork choice!</i> · v1.0.0</p>
   </div>
   <div class="toolbar">
     <span class="stat who-tag" id="who"></span>
-    <a class="mini" id="usersLink" href="users.html" hidden>👥 Users</a>
+    <a class="mini" id="usersLink" href="users.html" hidden>Users</a>
     <span class="starwrap" id="starWrap" hidden><button class="mini star" id="starBtn" aria-label="All users' sticky notes" aria-haspopup="true" aria-expanded="false" title="">★</button><div class="starpop" id="starPop" hidden><a class="btn pri" href="overview.html">⭐ Open all users' sticky notes ↗</a></div></span>
-    <button class="mini" id="profBtn">👤 Profile</button>
-    <button class="mini" id="acctBtn">🔑 Password</button>
-    <button class="mini" onclick="logout()">⎋ Log out</button>
-    <div class="themes" role="group" aria-label="Theme">
-      <span class="sub">Theme</span>
-      <button class="sw" data-th="white" style="background:#fff" title="Classic White" aria-label="White theme"></button>
-      <button class="sw" data-th="dark" style="background:#0f172a" title="Dark" aria-label="Dark theme"></button>
-      <button class="sw" data-th="pink" style="background:#f9a8d4" title="Pink" aria-label="Pink theme"></button>
-      <button class="sw" data-th="cepalco" style="background:linear-gradient(#000 50%,#facc15 50%)" title="CEPALCO" aria-label="CEPALCO theme"></button>
-    </div>
-    <div class="stats">
-      <div class="stat"><b id="sActive">0</b>Active</div>
-      <div class="stat ok"><b id="sDone">0</b>Done</div>
-      <div class="stat bad"><b id="sOver">0</b>Overdue</div>
-    </div>
+    <button class="mini" id="profBtn">Profile</button>
+    <button class="mini" id="acctBtn">Password</button>
+    <span class="themebox" id="themeBox">
+      <button class="mini" id="themeBtn" aria-haspopup="true" aria-expanded="false" aria-controls="themePop"><i class="dotc" style="--a:var(--acc);--b:var(--bg)"></i>Theme</button>
+      <div class="themepop" id="themePop" role="group" aria-label="Theme" hidden><h5>Theme</h5><div class="themegrid"><button class="swopt" data-th="white" aria-pressed="false"><i class="dotc" style="--a:#6366f1;--b:#f6f7f9"></i>Classic</button><button class="swopt" data-th="dark" aria-pressed="false"><i class="dotc" style="--a:#10b981;--b:#0b0f19"></i>Dark</button><button class="swopt" data-th="midnight" aria-pressed="false"><i class="dotc" style="--a:#818cf8;--b:#0f1020"></i>Midnight</button><button class="swopt" data-th="graphite" aria-pressed="false"><i class="dotc" style="--a:#e5e5e5;--b:#121212"></i>Graphite</button><button class="swopt" data-th="ocean" aria-pressed="false"><i class="dotc" style="--a:#0284c7;--b:#eef6fb"></i>Ocean</button><button class="swopt" data-th="forest" aria-pressed="false"><i class="dotc" style="--a:#2f855a;--b:#f1f5ee"></i>Forest</button><button class="swopt" data-th="lavender" aria-pressed="false"><i class="dotc" style="--a:#7c3aed;--b:#f5f3ff"></i>Lavender</button><button class="swopt" data-th="sunset" aria-pressed="false"><i class="dotc" style="--a:#ea580c;--b:#fff7ed"></i>Sunset</button><button class="swopt" data-th="sand" aria-pressed="false"><i class="dotc" style="--a:#92400e;--b:#f5f1e8"></i>Sand</button><button class="swopt" data-th="pink" aria-pressed="false"><i class="dotc" style="--a:#e11d48;--b:#fff1f2"></i>Pink</button><button class="swopt" data-th="cepalco" aria-pressed="false"><i class="dotc" style="--a:#000000;--b:#facc15"></i>CEPALCO</button></div></div>
+    </span>
+    <button class="mini" onclick="logout()">Log out</button>
+  </div>
+  <div class="stats">
+    <div class="stat"><b id="sActive">0</b>Active</div>
+    <div class="stat ok"><b id="sDone">0</b>Done</div>
+    <div class="stat bad"><b id="sOver">0</b>Overdue</div>
   </div>
 </header>
 
@@ -117,6 +114,13 @@
   </div>
 </div>
 <div id="toast"></div>
+<script>
+(()=>{const b=document.getElementById('themeBtn'),p=document.getElementById('themePop'),box=document.getElementById('themeBox');
+const set=o=>{p.hidden=!o;b.setAttribute('aria-expanded',String(o))};
+b.onclick=e=>{e.stopPropagation();set(p.hidden)};
+document.addEventListener('click',e=>{if(!box.contains(e.target))set(false)});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')set(false)});})();
+</script>
 <script src="app.js"></script>
 <script src="repeat.js" defer></script>
 <script src="chat.js" defer></script>

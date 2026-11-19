@@ -113,3 +113,12 @@ body.cw-drag{user-select:none;-webkit-user-select:none;cursor:grabbing}
 .cw-pill.drag{cursor:grabbing;transition:none}
 .cw-pill .cw-live{opacity:.95}
 @keyframes cwpulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--acc) 55%,transparent)}70%,100%{box-shadow:0 0 0 16px transparent}}
+
+.th-midnight .r-admin,.th-graphite .r-admin{color:#fbbf24}.th-midnight .r-host,.th-graphite .r-host{color:#2dd4bf}
+
+/* emoji picker: one quiet row above the composer */
+.cw-emob{width:36px;height:40px;flex:none;border:0;background:transparent;border-radius:12px;font-size:1.15rem;line-height:1;padding:0;opacity:.6;filter:grayscale(.5);transition:opacity .15s,background-color .15s,filter .15s}
+.cw-emob:hover,.cw-emob[aria-expanded=true]{opacity:1;filter:none;background:var(--soft)}
+.cw-emo{display:flex;flex-wrap:wrap;gap:2px;padding:6px 10px;border-top:1px solid var(--bd);background:var(--panel);flex:none}
+.cw-emo button{width:34px;height:34px;border:0;background:transparent;border-radius:10px;font-size:1.15rem;line-height:1;padding:0}
+.cw-emo button:hover{background:var(--soft)}

@@ -375,7 +375,7 @@ function wireDrag(){
 
 /* ---------- themes ---------- */
 function setTheme(t){P.theme=t;localStorage.setItem('stb_theme',t);applyTheme(t);save()}
-document.querySelectorAll('.sw').forEach(b=>b.onclick=()=>setTheme(b.dataset.th));
+document.querySelectorAll('[data-th]').forEach(b=>b.onclick=()=>{setTheme(b.dataset.th);const tp=document.getElementById('themePop');if(tp)tp.hidden=true;const tb=document.getElementById('themeBtn');if(tb)tb.setAttribute('aria-expanded','false')});
 
 /* ---------- change password ---------- */
 let forced=false;
