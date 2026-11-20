@@ -17,22 +17,31 @@
   const POLL = { open: 5000, hot: 2000, minimized: 30000, hidden: 60000 };   // ms between polls: chat open · dock minimized · browser tab in the background
   const HOT_MS = 45000;   // how long after the last message/typing the fast rate stays on
   const GROUPS = [['admin', 'Heads'], ['host', 'Supervisors'], ['staff', 'Staff']];
-  const SEEN_KEY = (localStorage.getItem('stb_sv') || 'cepalco') === 'cepalco' ? 'cw_seen' : 'cw_seen_' + localStorage.getItem('stb_sv');   // what I have read is remembered per server (channel names like #general exist in every server)
+  /* The chat belongs to ONE server at a time. On a server page it is that server. On the Cross-server Calendar there is still only
+     this single chat window: a header chip names its server and (if you are in several) lets you switch, so chat boxes never pile up. */
+  const CROSS = document.body.hasAttribute('data-cross');
+  const PAGE_SV = localStorage.getItem('stb_sv') || 'cepalco';
+  const seenKey = sv => sv === 'cepalco' ? 'cw_seen' : 'cw_seen_' + sv;
+  const chKey = sv => sv === PAGE_SV ? 'cw_ch' : 'cw_ch_' + sv;
+  const SV0 = CROSS ? (LS.get('cw_sv', PAGE_SV) || PAGE_SV) : PAGE_SV;
+  const SEEN_KEY0 = seenKey(SV0);
+  //   // what I have read is remembered per server (channel names like #general exist in every server)
 
   /* ---------- state ---------- */
   const S = {
-    open: LS.get('cw_open', false), ch: LS.get('cw_ch', 'general'), members: false,
-    me: null, hot: 1e9, avs: {}, channels: [], msgs: [], rev: -1, loaded: false, online: [], offline: 0, seen: LS.get(SEEN_KEY, {}),
+    sv: SV0, svs: [], open: LS.get('cw_open', false), ch: LS.get(chKey(SV0), 'general'), members: false,
+    me: null, hot: 1e9, avs: {}, channels: [], msgs: [], rev: -1, loaded: false, online: [], offline: 0, seen: LS.get(SEEN_KEY0, {}),
     edit: null, pos: LS.get('cw_pos', null), lastType: 0, err: false,
-    fresh: localStorage.getItem(SEEN_KEY) === null,   // brand-new browser: existing messages start as "read"
+    fresh: localStorage.getItem(SEEN_KEY0) === null,   // brand-new browser: existing messages start as "read"
   };
+  const capi = (p, m, b) => api(p, m, b, S.sv);   // every group-chat call is made inside the chat's own server
   let busy = false, fails = 0, timer = 0, sending = false, noteT = 0, drag = null, sigM = '', sigC = '';
 
   /* ---------- DOM ---------- */
   const root = document.createElement('div');
   root.className = 'cw';
   root.innerHTML = `
-<button class="cw-pill" id="cwPill" type="button" aria-label="Open group chat" title="Click to open · drag to move"><span aria-hidden="true">💬</span><span>Group chat</span><span class="cw-live" id="cwLive" hidden></span><em class="cw-badge" id="cwBadge" hidden></em></button>
+<button class="cw-pill" id="cwPill" type="button" aria-label="Open group chat" title="Click to open · drag to move"><span aria-hidden="true">💬</span><span class="cw-pn" id="cwPn">Group chat</span><span class="cw-live" id="cwLive" hidden></span><em class="cw-badge" id="cwBadge" hidden></em></button>
 <section class="cw-win" id="cwWin" role="dialog" aria-label="Group chat" hidden>
   <header class="cw-head" id="cwHead" title="Drag to move · double-click to put it back">
     <div class="cw-title"><b id="cwTitle"># general</b><small id="cwSub">Connecting…</small></div>
@@ -40,6 +49,7 @@
     <button class="cw-ib cw-frb" id="cwFrBtn" type="button" aria-label="Friends and private messages" title="Friends &amp; private messages">✉️<em class="cw-badge" id="cwFrB" hidden></em></button>
     <button class="cw-ib" id="cwMin" type="button" aria-label="Minimize chat" title="Minimize">—</button>
   </header>
+  <div class="cw-svbar"><button class="cw-svchip" id="cwSv" type="button" aria-haspopup="listbox" aria-expanded="false" title="Server this chat belongs to"></button><div class="cw-svmenu" id="cwSvMenu" role="listbox" aria-label="Choose a server's chat" hidden></div></div>
   <nav class="cw-chans" id="cwChans" aria-label="Channels"></nav>
   <div class="cw-log" id="cwLog" role="log" aria-live="polite" tabindex="0"></div>
   <div class="cw-typing" id="cwTyping" aria-live="polite"></div>
@@ -127,11 +137,42 @@
   function renderPill() {
     const n = S.channels.reduce((a, c) => a + unreadOf(c), 0), b = $('#cwBadge'), l = $('#cwLive');
     b.hidden = !n; b.textContent = n > 99 ? '99+' : n;
-    window.dispatchEvent(new CustomEvent('cw:unread', { detail: { n } }));   // the server rail shows the same count on this server's icon
-    $('#cwPill').setAttribute('aria-label', 'Open group chat' + (n ? ', ' + n + ' unread' : ''));
+    window.dispatchEvent(new CustomEvent('cw:unread', { detail: { n, sv: S.sv } }));   // the server rail shows the same count on this server's icon
+    $('#cwPill').setAttribute('aria-label', 'Open group chat of ' + svName() + (n ? ', ' + n + ' unread' : ''));
+    $('#cwPn').textContent = CROSS || S.svs.length > 1 ? svName() : 'Group chat'; $('#cwPill').title = svName() + ' · click to open · drag to move';
     l.hidden = !S.me; l.innerHTML = `<i class="cw-dot"></i>${S.online.length}`; l.title = S.online.length + ' online';
   }
+  const svInfo = id => S.svs.find(x => x.id === (id || S.sv));
+  const svName = id => { const x = svInfo(id); return x ? x.name : (S.sv === 'cepalco' ? 'CEPALCO Server' : 'Server'); };
+  const svIcon = id => id === 'cepalco' ? '<i class="cw-svi" style="background:#000;color:#facc15">CE</i>' : `<i class="cw-svi" style="background:hsl(${hue(id)} 55% 45%)">${esc((String(svName(id)).match(/[A-Za-z0-9]/g) || ['?']).slice(0, 2).join('').toUpperCase())}</i>`;
+  const unreadSv = id => id === S.sv ? S.channels.reduce((a, c) => a + unreadOf(c), 0) : ((window.__svUnread && window.__svUnread()[id]) || 0);
+  function renderSv() {                      // header chip = which server this chat box belongs to
+    const chip = $('#cwSv'), multi = CROSS && S.svs.length > 1;
+    chip.innerHTML = svIcon() + `<span class="cw-svn">${esc(svName())}</span>` + (multi ? '<span class="cw-svc" aria-hidden="true">▾</span>' : '');
+    chip.classList.toggle('multi', multi); chip.disabled = !multi; chip.setAttribute('aria-label', 'Chat of server ' + svName() + (multi ? '. Choose another server' : ''));
+    const menu = $('#cwSvMenu');
+    if (!multi) { menu.hidden = true; chip.setAttribute('aria-expanded', 'false'); return; }
+    menu.innerHTML = S.svs.map(x => { const u = unreadSv(x.id); return `<button type="button" role="option" class="cw-svo${x.id === S.sv ? ' on' : ''}" data-sv="${esc(x.id)}" aria-selected="${x.id === S.sv}">${svIcon(x.id)}<span class="cw-svn">${esc(x.name)}</span>${u ? `<em class="cw-badge">${u > 99 ? '99+' : u}</em>` : ''}</button>`; }).join('');
+  }
+  async function loadServers() {
+    try {
+      const c = JSON.parse(sessionStorage.getItem('stb_svl') || 'null');
+      S.svs = (c && Date.now() - c.t < 20000 ? c.d : await api('/api/servers')).servers || [];
+    } catch (e) { S.svs = []; }
+    if (S.svs.length && !S.svs.some(x => x.id === S.sv)) { setServer(PAGE_SV !== S.sv && S.svs.some(x => x.id === PAGE_SV) ? PAGE_SV : 'cepalco', true); }
+    renderAll();
+  }
+  function setServer(id, quiet) {            // switch THE chat (not a new one) to another server
+    if (id === S.sv && !quiet) return;
+    S.sv = id; LS.set('cw_sv', id);
+    S.ch = LS.get(chKey(id), 'general'); S.rev = -1; S.msgs = []; S.loaded = false; S.channels = []; S.online = []; S.offUsers = []; S.offline = 0; S.me = null; S.avs = {};
+    S.seen = LS.get(seenKey(id), {}); S.fresh = localStorage.getItem(seenKey(id)) === null;
+    cancelEdit(); sigC = ''; sigM = ''; $('#cwSvMenu').hidden = true; $('#cwSv').setAttribute('aria-expanded', 'false');
+    if (quiet) return;
+    renderAll(); renderLog(true); schedule(0);
+  }
   function renderHead() {
+    renderSv();
     const cur = S.channels.find(c => c.id === S.ch);
     $('#cwTitle').textContent = (cur && cur.tag ? '🔒 ' : '') + '# ' + S.ch;
     $('#cwSub').innerHTML = S.err ? 'Reconnecting…' : S.me ? `<i class="cw-dot"></i>${S.online.length} online` : 'Connecting…';
@@ -264,7 +305,7 @@
     if (seen) q.set('seen', seen);
     if (S.open && Date.now() - S.lastType < 5000) q.set('typing', S.ch);
     const fx = window.__cwF && window.__cwF.params(); if (fx) for (const k in fx) q.set(k, fx[k]);   // private conversations that are open + what was read (friends.js)
-    try { const d = await api('/api/chat?' + q); fails = 0; S.err = false; apply(d); }
+    try { const d = await capi('/api/chat?' + q); fails = 0; S.err = false; apply(d); }
     catch (e) { if (e.status === 401) return location.replace('login.html'); fails++; S.err = true; renderHead(); }
     finally { busy = false; schedule(); }
   }
@@ -275,14 +316,14 @@
     S.me = d.me; S.channels = d.channels; S.online = d.online; S.offline = d.offline; S.offUsers = d.offUsers || [];
     d.channels.forEach(c => { if (S.seen[c.id] == null) S.seen[c.id] = S.fresh ? c.last : 0; });   // new browser: all read · channel created later: everything in it is unread
     S.fresh = false;
-    if (!d.channels.some(c => c.id === S.ch)) { S.ch = d.channels[0].id; S.rev = -1; S.msgs = []; S.loaded = false; LS.set('cw_ch', S.ch); }   // my channel was removed
+    if (!d.channels.some(c => c.id === S.ch)) { S.ch = d.channels[0].id; S.rev = -1; S.msgs = []; S.loaded = false; LS.set(chKey(S.sv), S.ch); }   // my channel was removed
     if (S.open && d.ch === S.ch && d.msgs) { S.msgs = d.msgs; S.rev = d.rev; S.loaded = true; renderLog(); }
     else if (S.open && S.loaded && avChanged) renderLog();   // someone's photo changed: redraw the avatars
     if (S.open && S.loaded && !document.hidden) {
       const c = d.channels.find(x => x.id === S.ch);
       if (c && S.seen[c.id] !== c.last) { S.seen[c.id] = c.last; }
     }
-    LS.set(SEEN_KEY, S.seen);
+    LS.set(seenKey(S.sv), S.seen);
     try { if (window.__cwF) window.__cwF.apply(d); } catch (e) { console.error(e); }   // friends + private messages ride on the same poll
     renderAll();
   }
@@ -291,7 +332,7 @@
   /* ---------- actions ---------- */
   function switchTo(id) {
     if (id === S.ch) return;
-    S.ch = id; LS.set('cw_ch', id); S.rev = -1; S.msgs = []; S.loaded = false; cancelEdit();
+    S.ch = id; LS.set(chKey(S.sv), id); S.rev = -1; S.msgs = []; S.loaded = false; cancelEdit();
     sigC = ''; renderAll(); renderLog(true); schedule(0);
   }
   function cancelEdit() { S.edit = null; $('#cwEdit').hidden = true; if (ta.value && ta.dataset.edit) ta.value = ''; delete ta.dataset.edit; autosize(); }
@@ -304,11 +345,11 @@
     sending = true;
     try {
       if (S.edit) {
-        const m = await api(`/api/chat/msg/${encodeURIComponent(S.edit)}?ch=${encodeURIComponent(S.ch)}`, 'PUT', { text });
+        const m = await capi(`/api/chat/msg/${encodeURIComponent(S.edit)}?ch=${encodeURIComponent(S.ch)}`, 'PUT', { text });
         const i = S.msgs.findIndex(x => x.id === S.edit); if (i >= 0) S.msgs[i] = m;
         cancelEdit(); ta.value = '';
       } else {
-        const ch = S.ch, m = await api('/api/chat/send', 'POST', { ch, text });
+        const ch = S.ch, m = await capi('/api/chat/send', 'POST', { ch, text });
         if (ch === S.ch && !S.msgs.some(x => x.id === m.id)) S.msgs.push(m);   // a poll may already have brought it in
         ta.value = '';
       }
@@ -318,17 +359,17 @@
   }
   async function del(id) {
     if (!confirm('Delete this message for everyone?')) return;
-    try { await api(`/api/chat/msg/${encodeURIComponent(id)}?ch=${encodeURIComponent(S.ch)}`, 'DELETE'); S.msgs = S.msgs.filter(x => x.id !== id); if (S.edit === id) cancelEdit(); renderLog(); schedule(1500); }
+    try { await capi(`/api/chat/msg/${encodeURIComponent(id)}?ch=${encodeURIComponent(S.ch)}`, 'DELETE'); S.msgs = S.msgs.filter(x => x.id !== id); if (S.edit === id) cancelEdit(); renderLog(); schedule(1500); }
     catch (e) { note(e.message); }
   }
   async function addChannel() {
     const name = prompt('New channel name (letters, numbers, dashes):'); if (!name) return;
-    try { const r = await api('/api/chat/channels', 'POST', { name }); switchTo(r.id); schedule(0); } catch (e) { note(e.message); }
+    try { const r = await capi('/api/chat/channels', 'POST', { name }); switchTo(r.id); schedule(0); } catch (e) { note(e.message); }
   }
   async function rmChannel() {
     if (!confirm(`Remove #${S.ch} and all its messages for everyone?`)) return;
     const id = S.ch;
-    try { await api('/api/chat/channels/' + encodeURIComponent(id), 'DELETE'); S.channels = S.channels.filter(c => c.id !== id); switchTo('general'); } catch (e) { note(e.message); }
+    try { await capi('/api/chat/channels/' + encodeURIComponent(id), 'DELETE'); S.channels = S.channels.filter(c => c.id !== id); switchTo('general'); } catch (e) { note(e.message); }
   }
   function autosize() { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 96) + 'px'; }
 
@@ -358,6 +399,9 @@
   pill.addEventListener('pointerup', endPill); pill.addEventListener('pointercancel', endPill);
   pill.onclick = () => { if (pMoved) { pMoved = false; return; } setOpen(true, true); };
   addEventListener('resize', placePill); placePill();
+  $('#cwSv').onclick = e => { e.stopPropagation(); const m = $('#cwSvMenu'); m.hidden = !m.hidden; $('#cwSv').setAttribute('aria-expanded', String(!m.hidden)); if (!m.hidden) renderSv(); };
+  $('#cwSvMenu').addEventListener('click', e => { const b = e.target.closest('[data-sv]'); if (b) setServer(b.dataset.sv); });
+  document.addEventListener('click', e => { const m = $('#cwSvMenu'); if (!m.hidden && !m.contains(e.target)) { m.hidden = true; $('#cwSv').setAttribute('aria-expanded', 'false'); } });
   $('#cwMin').onclick = () => { setOpen(false); $('#cwPill').focus(); };
   $('#cwMem').onclick = () => setMembers(!S.members);
   mem.addEventListener('click', e => {
@@ -387,6 +431,7 @@
   });
   root.addEventListener('keydown', e => {
     if (e.key !== 'Escape' || e.defaultPrevented) return;
+    if (!$('#cwSvMenu').hidden) { $('#cwSvMenu').hidden = true; return; }
     if (S.members) setMembers(false); else if (S.open) { setOpen(false); $('#cwPill').focus(); }
   });
 
@@ -397,5 +442,6 @@
   /* ---------- go ---------- */
   win.hidden = !S.open; $('#cwPill').hidden = S.open;
   if (S.open) applyPos();
-  renderLog(); renderAll(); poll();
+  renderLog(); renderAll();
+  if (CROSS) loadServers().then(poll); else { poll(); loadServers(); }   // on the cross page, make sure the remembered server is still mine before the first poll
 })();

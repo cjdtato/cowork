@@ -16,7 +16,7 @@ async function api(path,method='GET',body,server){   // server (optional) = act 
   if(method!=='GET'&&/^\/api\/(admin\/)?servers/.test(path))sessionStorage.removeItem('stb_svl');   // any server change invalidates the cached list
   const r=await fetch(path,{method,headers:h,body:body?JSON.stringify(body):undefined,credentials:'same-origin'});
   let d={};try{d=await r.json()}catch(e){}
-  if(r.status===403&&/not a member of that server/i.test(d.error||'')){localStorage.removeItem('stb_sv');location.reload();throw new Error(d.error)}   // kicked / server deleted -> back to CEPALCO
+  if(r.status===403&&!server&&/not a member of that server/i.test(d.error||'')){localStorage.removeItem('stb_sv');location.reload();throw new Error(d.error)}   // kicked / server deleted -> back to CEPALCO
   if(!r.ok){const e=new Error(d.error||('Server error '+r.status));e.status=r.status;throw e}
   return d;
 }

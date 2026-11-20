@@ -133,3 +133,18 @@ body.cw-drag{user-select:none;-webkit-user-select:none;cursor:grabbing}
 .pv-dl dt{font-weight:800;opacity:.6}.pv-dl dd{margin:0;font-weight:700;min-width:0;overflow-wrap:anywhere}
 .pv-hid{text-align:center;margin:6px 0}
 .cw-row.off .cw-st::after{background:#94a3b8}
+
+/* ---- which server this chat belongs to (header chip) + switcher on the cross-server page ---- */
+.cw-svbar{position:relative;flex:none;padding:6px 10px 0}
+.cw-svchip{display:flex;align-items:center;gap:8px;width:100%;min-height:32px;padding:3px 10px 3px 4px;border:1px solid var(--bd);border-radius:99px;background:var(--soft);color:inherit;font:inherit;font-weight:800;font-size:.78rem;text-align:left;cursor:default}
+.cw-svchip:disabled{opacity:1;color:inherit}
+.cw-svchip.multi{cursor:pointer}.cw-svchip.multi:hover{border-color:var(--acc)}
+.cw-svchip:focus-visible,.cw-svo:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.cw-svi{flex:0 0 24px;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font:800 .62rem system-ui,sans-serif;font-style:normal;color:#fff}
+.cw-svn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cw-svc{opacity:.6;font-size:.7rem}
+.cw-svmenu{position:absolute;z-index:5;left:10px;right:10px;top:calc(100% + 4px);max-height:220px;overflow-y:auto;padding:4px;border:1px solid var(--bd);border-radius:14px;background:var(--panel);box-shadow:var(--sh)}
+.cw-svmenu[hidden]{display:none}
+.cw-svo{display:flex;align-items:center;gap:8px;width:100%;min-height:36px;padding:3px 8px 3px 4px;border:0;border-radius:10px;background:none;color:inherit;font:inherit;font-weight:700;font-size:.8rem;text-align:left;cursor:pointer}
+.cw-svo:hover{background:var(--soft)}.cw-svo.on{background:var(--soft);box-shadow:inset 3px 0 0 var(--acc)}
+.cw-pill .cw-pn{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

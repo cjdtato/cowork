@@ -215,7 +215,8 @@ function paintUn(){
     const bt=b.closest('.svi'),nm=bt&&bt.title;if(bt)bt.setAttribute('aria-label',n?`${nm}, ${n} unread chat message${n===1?'':'s'}`:nm);
   });
 }
-window.addEventListener('cw:unread',e=>{UN[cur()]=e.detail.n;unChat=true;paintUn()});   // this server: chat.js knows exactly what is on screen
+let chatSv=null;window.__svUnread=()=>UN;
+window.addEventListener('cw:unread',e=>{chatSv=e.detail.sv||cur();UN[chatSv]=e.detail.n;unChat=true;paintUn()});   // this server: chat.js knows exactly what is on screen
 async function pollUn(){
   if(unBusy||document.hidden||!LIST.length)return;unBusy=true;
   try{
@@ -224,7 +225,7 @@ async function pollUn(){
       const v=o&&typeof o==='object'?Object.entries(o).map(([k,t])=>k+':'+t).join(','):'';if(v)seen[x.id]=v}
     const d=await api('/api/servers/unread','POST',{seen});
     for(const [id,x] of Object.entries(d.servers||{})){
-      if(!(id===cur()&&unChat))UN[id]=x.unread;
+      if(!(id===(chatSv||cur())&&unChat))UN[id]=x.unread;
       if(id!==cur()&&!(id in seen)){try{localStorage.setItem(SEENK(id),JSON.stringify(x.last))}catch(e){}}   // first look at a server from this browser: what is already there counts as read (the open server is left to chat.js)
     }
     paintUn();

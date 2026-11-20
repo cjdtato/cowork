@@ -75,3 +75,8 @@ See README ("Friends & private messages"). New: friends.js, friends.css; changed
 
 # Profile posts (Threads style)
 See README ("Profile posts"). New: `posts.js`, `posts.css`; changed: `api.mjs` (routes, limits, account-delete cleanup), `app.js` (own profile mount, bell text/icon/click), `chat.js` (profile viewer mount), the three HTML pages (stylesheet + script), `test/smoke.mjs` (+23 checks). The profile dialog is now wider (480 px) and scrolls when the posts are long.
+
+# Group chat shows its server; one chat box only (cross-server page)
+- The group-chat window has a **server chip** under its header (icon + server name). The minimized pill shows the server name too.
+- There is still ONE chat window, never one per server. On `cross.html` the chip is a switcher (▾) listing your servers with unread counts; choosing one re-points the same window to that server's channels. On a server page the chip is fixed to that server.
+- `chat.js`: all `/api/chat*` calls pass the chat's own server (`api(..., server)`); read-state and last channel are remembered per server; the remembered server is validated before the first poll. `auth.js`: an explicit-server call that gets "not a member" no longer clears the active server/reloads. `servers.js`: unread badge is attributed to the server the chat shows. Private messages/friends stay global.
