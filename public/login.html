@@ -16,11 +16,11 @@
 </form>
 <script>
 (async()=>{
-  if(await currentUser())return location.replace('index.html');
+  if(await currentUser())return location.replace('cross.html');
   const btn=document.querySelector('button'),err=document.getElementById('err');
   document.getElementById('f').onsubmit=async e=>{
     e.preventDefault();btn.disabled=true;btn.textContent='Logging in…';err.textContent='';
-    try{await login(document.getElementById('u').value,document.getElementById('p').value);location.href='index.html'}
+    try{await login(document.getElementById('u').value,document.getElementById('p').value);location.href='cross.html'}
     catch(x){err.textContent=x.status?x.message:'Cannot reach the server. Check your connection.';btn.disabled=false;btn.textContent='Log in'}
   };
 })();

@@ -40,3 +40,15 @@ The default admin (`u_admin`) stays Head of **CEPALCO Server** exactly as before
 - `X-Server` for the default admin may be ANY server without being a member: he acts as Head there (all existing chat/calendar/roles/users routes work) and is not listed as a member. Rename / new code / delete of any server also allowed for him. Everyone else is unchanged (members only; delete = owner only).
 - Role channels (`<role>-chat`) are private to holders; the platform admin sees them only if he adds himself to the server and takes the role.
 - Still open: deleting an account does not clean its tasks in user servers (shows "Deleted user").
+
+## Cross-server Calendar (default landing page)
+- `public/cross.html` – month calendar + "coming up" list of **my personal notes + every task assigned to me in every server I belong to** (CEPALCO included). Filter chips per source; colored edge = server. A day opens a list with **Mark my part done** (acts in that task's server) and **Open in <server>**.
+- Rail item **🗓 Cross-server Calendar** (top of the server list, `servers.js`). Clicking a server from this page opens that server on the normal calendar (`index.html`).
+- API `GET /api/cross` (global, ignores `X-Server`) → `{servers, personal, shared:[{…taskDTO, serverId, serverName}]}`; only tasks where the caller is an assignee and status is active.
+- Default page: login → `cross.html`; an already signed-in visit to `login.html` → `cross.html`; `/` is rewritten to `cross.html` (`netlify.toml`).
+- **No peek before login**: `auth.js` hides every page except `login.html` (`#authGate`) until `/api/me` confirms the session; no session → straight to `login.html`.
+
+## Server logo (v2.9)
+- Server Heads (and the platform admin) set it in the rail → ⓘ Server info → **Server logo**. One change per **15 days**, enforced by the API (429). First upload is free. CEPALCO's logo can be changed by its Head too.
+- Cheap on Netlify: the browser shrinks the picture to a 96×96 WebP (≈2–6 KB, hard cap 24 KB) before upload; `GET /api/server-logo/<id>?v=<logoAt>` is public (no session/user reads, one tiny blob read) and sent with `Cache-Control: public, max-age=31536000, immutable` + `Netlify-CDN-Cache-Control … durable`, so each logo is fetched once per change. `logoAt` rides along in the `/servers` list that is already loaded (no extra requests); CEPALCO uses one small `svmeta:cepalco` blob.
+- API: `POST /servers/<id|cepalco>/logo {image: dataURL}` → `{logoAt, logoNext}`. Logo blob key `svlogo:<id>`; deleted with the server.

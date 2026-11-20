@@ -1,6 +1,12 @@
 [build]
   publish = "public"
 
+[[redirects]]
+  from = "/"
+  to = "/cross.html"
+  status = 200
+  force = true
+
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"

@@ -12,6 +12,8 @@ const SCOPED = /^(shared|tags|chat:)/;
 const DEF_SV = 'cepalco', SV_ID = /^s_[a-f0-9]{8}$/, MAX_OWN = 5, MAX_MEM = 100, SV_NAME = 'CEPALCO Server';
 const svKey = (id, k) => id !== DEF_SV && SCOPED.test(k) ? `sv:${id}:${k}` : k;
 const scoped = (b, cur) => ({ get: (k, o) => b.get(svKey(cur(), k), o), getWithMetadata: (k, o) => b.getWithMetadata(svKey(cur(), k), o), setJSON: (k, d, o) => b.setJSON(svKey(cur(), k), d, o), delete: k => b.delete(svKey(cur(), k)) });
+const LOGO_COOLDOWN = 15 * 864e5, LOGO_MAX = 24 * 1024;   // server logo: one change per 15 days; the browser sends a ~96px WebP (typically 2-6 KB), hard cap 24 KB
+const LOGO_MAGIC = { 'image/jpeg': b => b[0] === 0xff && b[1] === 0xd8, 'image/png': b => b.subarray(1, 4).toString() === 'PNG', 'image/webp': b => b.subarray(0, 4).toString() === 'RIFF' && b.subarray(8, 12).toString() === 'WEBP' };
 const newCode = () => Array.from(randomBytes(8), x => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[x % 32]).join('');
 const J = (d, s = 200, h = {}) => new Response(JSON.stringify(d), { status: s, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...h } });
 const today = () => new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10);   // Manila date (UTC+8), not the server's UTC date
@@ -195,6 +197,14 @@ export default async (req) => {
       try { body = raw.trim() ? (JSON.parse(raw) || {}) : {}; } catch { throw H('Bad JSON'); }
     }
 
+    // ----- server logo (public image, immutable: the URL carries ?v=<logoAt>, so browsers/CDN fetch it once per change) -----
+    const lg = path.match(/^\/server-logo\/(cepalco|s_[a-f0-9]{8})$/);
+    if (lg && m === 'GET') {
+      const a = await bs.get('svlogo:' + lg[1], { type: 'json' });
+      if (!a) return new Response('Not found', { status: 404, headers: { 'Cache-Control': 'public, max-age=300' } });
+      return new Response(Buffer.from(a.b64, 'base64'), { status: 200, headers: { 'Content-Type': a.type, 'Cache-Control': 'public, max-age=31536000, immutable', 'Netlify-CDN-Cache-Control': 'public, max-age=31536000, durable', 'X-Content-Type-Options': 'nosniff' } });
+    }
+
     // ----- login (public) -----
     if (path === '/login' && m === 'POST') {
       const un = String(body.username || '').trim().toLowerCase(), pw = String(body.password || '');
@@ -245,8 +255,9 @@ export default async (req) => {
     };
     if (path === '/servers' && m === 'GET') {
       const list = await srvList();
-      const def = { id: DEF_SV, name: SV_NAME, owner: meG.id === DEFAULT_ADMIN, role: meG.role, members: allUs.filter(u => u.active).length, createdBy: allUs.find(u => u.id === DEFAULT_ADMIN)?.name || 'Administrator', isDefault: true };
-      const mine = list.filter(x => x.members[meG.id]).map(x => ({ id: x.id, name: x.name, owner: x.ownerId === meG.id, role: x.members[meG.id].role, members: Object.keys(x.members).length, createdBy: allUs.find(u => u.id === x.ownerId)?.name || 'Unknown', ...(x.members[meG.id].role === 'admin' ? { code: x.code } : {}) }));
+      const dm = await bs.get('svmeta:cepalco', { type: 'json' });
+      const def = { logoAt: dm?.logoAt || 0, id: DEF_SV, name: SV_NAME, owner: meG.id === DEFAULT_ADMIN, role: meG.role, members: allUs.filter(u => u.active).length, createdBy: allUs.find(u => u.id === DEFAULT_ADMIN)?.name || 'Administrator', isDefault: true };
+      const mine = list.filter(x => x.members[meG.id]).map(x => ({ logoAt: x.logoAt || 0, id: x.id, name: x.name, owner: x.ownerId === meG.id, role: x.members[meG.id].role, members: Object.keys(x.members).length, createdBy: allUs.find(u => u.id === x.ownerId)?.name || 'Unknown', ...(x.members[meG.id].role === 'admin' ? { code: x.code } : {}) }));
       return J({ servers: [def, ...mine], superAdmin: isSuper });
     }
     if (path === '/servers' && m === 'POST') {
@@ -269,6 +280,29 @@ export default async (req) => {
         x.members[meG.id] = { role: 'staff', hostIds: [], tagIds: [] }; return x;
       });
       return J({ id: out.id, name: out.name });
+    }
+    const lgm = path.match(/^\/servers\/(cepalco|s_[a-f0-9]{8})\/logo$/);
+    if (lgm && m === 'POST') {   // change the server logo (server Head); once per 15 days, enforced here
+      const sid = lgm[1];
+      const mt = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(String(body.image || ''));
+      if (!mt) throw H('Please choose a JPG, PNG or WebP image.');
+      const buf = Buffer.from(mt[2], 'base64');
+      if (buf.length > LOGO_MAX) throw H('Logo is too large (max 24 KB after resizing).', 413);
+      if (!LOGO_MAGIC[mt[1]](buf)) throw H('That file is not a valid image.');
+      let at = 0;
+      const apply = async rec => {   // rec = the object that holds logoAt
+        const wait = (rec.logoAt || 0) + LOGO_COOLDOWN - Date.now();
+        if (rec.logoAt && wait > 0) throw H(`The server logo can be changed again in ${Math.ceil(wait / 864e5)} day(s).`, 429);
+        await bs.setJSON('svlogo:' + sid, { type: mt[1], b64: mt[2] });
+        rec.logoAt = at = Date.now();
+      };
+      if (sid === DEF_SV) {
+        if (meG.role !== 'admin' && !isSuper) throw H('Only a server Head can change the logo.', 403);
+        await mutate(bs, 'svmeta:cepalco', () => ({}), apply);
+      } else {
+        await mutSrv(async list => { const x = list.find(v => v.id === sid); if (!x || (x.members[meG.id]?.role !== 'admin' && !isSuper)) throw H('Only a server Head can change the logo.', 403); await apply(x); });
+      }
+      return J({ ok: 1, logoAt: at, logoNext: at + LOGO_COOLDOWN });
     }
     const svm = path.match(/^\/servers\/(s_[a-f0-9]{8})(?:\/(leave|invite))?$/);
     if (svm) {
@@ -301,6 +335,7 @@ export default async (req) => {
         });
         const chans = (await bs.get(svKey(sid, 'chat:channels'), { type: 'json' })) || [];
         for (const k of ['shared', 'tags', 'chat:channels', 'chat:general', ...chans.map(c => 'chat:' + c.id)]) await bs.delete(svKey(sid, k));
+        await bs.delete('svlogo:' + sid);
         return J({ ok: 1 });
       }
     }
@@ -313,7 +348,7 @@ export default async (req) => {
       const detail = async x => {
         const [tags, chans, sh] = await Promise.all(['tags', 'chat:channels', 'shared'].map(k => bs.get(svKey(x.id, k), { type: 'json' })));
         const tg = tags || [], mem = x.members || {};
-        return { id: x.id, name: x.name, created: x.created, code: x.code, ownerId: x.ownerId, owner: nameOf(x.ownerId) || 'Unknown (account deleted)',
+        return { logoAt: x.logoAt || 0, id: x.id, name: x.name, created: x.created, code: x.code, ownerId: x.ownerId, owner: nameOf(x.ownerId) || 'Unknown (account deleted)',
           roles: tg.map(t => t.name), channels: (chans || [{ id: 'general', name: 'general' }]).filter(c => !c.tag).map(c => c.name), tasks: (sh?.tasks || []).length,
           members: Object.entries(mem).map(([id, v]) => ({ id, name: nameOf(id) || 'Deleted user', username: allUs.find(u => u.id === id)?.username || '', role: v.role, roles: (v.tagIds || []).map(t => tg.find(g => g.id === t)?.name).filter(Boolean) })) };
       };
@@ -342,6 +377,29 @@ export default async (req) => {
         return J({ ok: 1 });
       }
       throw H('Not found', 404);
+    }
+
+    // ----- cross-server calendar: my personal notes + every task assigned to me, across ALL my servers (global; ignores X-Server) -----
+    if (path === '/cross' && m === 'GET') {
+      const list = await srvList();
+      const svs = [{ id: DEF_SV, name: SV_NAME }, ...list.filter(x => x.members[meG.id]).map(x => ({ id: x.id, name: x.name }))];
+      const tasks = [];
+      for (const sv of svs) {
+        let usS = allUs, meS = meG;
+        if (sv.id !== DEF_SV) {
+          const x = list.find(v => v.id === sv.id);
+          usS = allUs.filter(u => u.active && x.members[u.id]).map(u => { const mm = x.members[u.id]; return { ...u, role: mm.role, hostIds: mm.role === 'staff' ? mm.hostIds : [], tagIds: mm.tagIds }; });
+          meS = usS.find(u => u.id === meG.id);
+          if (!meS) continue;
+        }
+        const sh = (await bs.get(svKey(sv.id, 'shared'), { type: 'json' })) || { tasks: [] };
+        for (const t of sh.tasks) {
+          if (t.status !== 'active' || !isMine(meS, t)) continue;   // only tasks given to me
+          tasks.push({ ...taskDTO(t, meS, allUs), serverId: sv.id, serverName: sv.name });
+        }
+      }
+      const b = (await bs.get('board:' + meG.id, { type: 'json' })) || { tasks: [] };
+      return J({ servers: svs, personal: (b.tasks || []).filter(t => t.status !== 'trash'), shared: tasks });
     }
 
     // ----- pick the active server: X-Server header (default = CEPALCO). 'us' = the people of THIS server with their server position/roles -----

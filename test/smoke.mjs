@@ -434,6 +434,56 @@ console.log('Platform admin (default admin)');
   check('admin: another Head (not the default admin) still cannot enter or delete someone else\'s server', (await SS('/servers', 'POST', { name: 'Private' })).status === 201 && await (async () => { const o = (await SS('/servers')).d.servers.find(x => x.name === 'Private').id; return (await H2('/me#sv=' + o)).status === 403 && (await H2('/servers/' + o, 'DELETE')).status === 403; })());
 }
 
+console.log('Cross-server calendar');
+{
+  const mk = await SS('/servers', 'POST', { name: 'Cross Crew' }), SID = mk.d.id, q = '#sv=' + SID;
+  await SS('/users' + q, 'POST', { username: 'svguy', role: 'staff' });   // svguy joins the user server (account made in the Servers block above)
+  const G = browser(); await G('/login', 'POST', { username: 'svguy', password: 'svguy-pass-1' });
+  const tk = (title, ids) => ({ title, description: '', priority: 'Now', date: '2026-03-05', assignees: ids });
+  const svguy = (await N('/users')).d.users.find(u => u.username === 'svguy').id;
+  const a = await SS('/shared' + q, 'POST', tk('Cross-server task', [svguy]));
+  const b = await N('/shared', 'POST', tk('CEPALCO task for svguy', [svguy]));
+  await SS('/users' + q, 'POST', { username: 'bill1', role: 'staff' });
+  const bill = (await N('/users')).d.users.find(u => u.username === 'bill1').id;
+  const other = await SS('/shared' + q, 'POST', tk('Not for svguy', [bill]));
+  await G('/board', 'PUT', { tasks: [{ id: 'p1', title: 'My private note', date: '2026-03-06', priority: 'Next', status: 'active', color: '#fff3a1' }], rev: 0, theme: 'white' });
+  check('cross: setup tasks created', a.status === 201 && b.status === 201 && other.status === 201);
+  const c = await G('/cross');
+  check('cross: lists CEPALCO + each server I belong to', c.status === 200 && c.d.servers.some(x => x.id === 'cepalco') && c.d.servers.some(x => x.id === SID));
+  check('cross: includes tasks assigned to me from every server, tagged with the server', c.d.shared.some(t => t.title === 'Cross-server task' && t.serverId === SID && t.serverName === 'Cross Crew') && c.d.shared.some(t => t.title === 'CEPALCO task for svguy' && t.serverId === 'cepalco'));
+  check('cross: does NOT include tasks assigned to someone else', !c.d.shared.some(t => t.title === 'Not for svguy'));
+  check('cross: includes my personal notes', c.d.personal.some(t => t.title === 'My private note'));
+  check('cross: ignores the X-Server header (always all servers)', (await G('/cross#sv=' + SID)).d.shared.length === c.d.shared.length);
+  const X = browser(); await X('/login', 'POST', { username: 'sup1', password: 'sup-pass-12' });
+  const xc = (await X('/cross')).d;
+  check('cross: servers/tasks of servers I am not in are not leaked', !xc.servers.some(s => s.id === SID) && !xc.shared.some(t => t.serverId === SID));
+  check('cross: needs login', (await browser()('/cross')).status === 401);
+  check('cross: marking my part done works from the cross view (X-Server of that task)', (await G('/shared/' + a.d.id + q, 'PUT', { done: true })).status === 200 && (await G('/cross')).d.shared.find(t => t.id === a.d.id).myDone === true);
+}
+
+console.log('Server logo');
+{
+  // tiny real WebP (1x1) + a fake PNG header
+  const webp = 'data:image/webp;base64,UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==';
+  const mk = await SS('/servers', 'POST', { name: 'Logo Crew' }), SID = mk.d.id;
+  const pubGet = async id => handler(new Request('https://x.test/api/server-logo/' + id));   // no cookie: it is a public image
+  check('logo: none yet -> 404', (await pubGet(SID)).status === 404);
+  check('logo: bad data is rejected', (await SS('/servers/' + SID + '/logo', 'POST', { image: 'data:image/webp;base64,AAAA' })).status === 400);
+  check('logo: a non-Head cannot change it', (await V('/servers/join', 'POST', { code: mk.d.code })).status === 200 && (await V('/servers/' + SID + '/logo', 'POST', { image: webp })).status === 403);
+  check('logo: oversize is rejected', (await SS('/servers/' + SID + '/logo', 'POST', { image: 'data:image/webp;base64,UklGR' + 'A'.repeat(40000) })).status === 413);
+  const up = await SS('/servers/' + SID + '/logo', 'POST', { image: webp });
+  check('logo: server Head can upload', up.status === 200 && up.d.logoAt > 0 && up.d.logoNext === up.d.logoAt + 15 * 864e5);
+  const g = await pubGet(SID);
+  check('logo: served publicly with long immutable cache', g.status === 200 && g.headers.get('content-type') === 'image/webp' && /immutable/.test(g.headers.get('cache-control')) && /max-age=31536000/.test(g.headers.get('cache-control')));
+  check('logo: /servers exposes logoAt (the cache-busting version) to members', (await SS('/servers')).d.servers.find(x => x.id === SID).logoAt === up.d.logoAt && (await V('/servers')).d.servers.find(x => x.id === SID).logoAt === up.d.logoAt);
+  check('logo: second change within 15 days is blocked (429)', (await SS('/servers/' + SID + '/logo', 'POST', { image: webp })).status === 429);
+  const real = Date.now; Date.now = () => real() + 16 * 864e5;
+  const again = await SS('/servers/' + SID + '/logo', 'POST', { image: webp }); Date.now = real;
+  check('logo: allowed again after 15 days', again.status === 200);
+  check('logo: CEPALCO logo is changeable by its Head only', (await SS('/servers/cepalco/logo', 'POST', { image: webp })).status === 403 && (await N('/servers/cepalco/logo', 'POST', { image: webp })).status === 200 && (await N('/servers')).d.servers[0].logoAt > 0 && (await pubGet('cepalco')).status === 200);
+  check('logo: deleting the server removes its logo', (await SS('/servers/' + SID, 'DELETE')).status === 200 && (await pubGet(SID)).status === 404);
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(failed ? `\n${failed} check(s) FAILED` : '\nAll checks passed');
 process.exit(failed ? 1 : 0);
