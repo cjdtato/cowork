@@ -6,7 +6,13 @@ import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
 class HttpError extends Error { constructor(s, m) { super(m); this.status = s; } }
 const H = (m, s = 400) => new HttpError(s, m);
 
-const store = () => getStore({ name: 'taskboard', consistency: 'strong' });
+const base = () => getStore({ name: 'taskboard', consistency: 'strong' });
+// SERVERS: keys shared / tags / chat:* live in a per-server namespace (sv:<id>:<key>); the default 'cepalco' server keeps the original un-prefixed keys. Everything else (users, boards, friends, DMs, posts, notifications, sessions) is global.
+const SCOPED = /^(shared|tags|chat:)/;
+const DEF_SV = 'cepalco', SV_ID = /^s_[a-f0-9]{8}$/, MAX_OWN = 5, MAX_MEM = 100, SV_NAME = 'CEPALCO Server';
+const svKey = (id, k) => id !== DEF_SV && SCOPED.test(k) ? `sv:${id}:${k}` : k;
+const scoped = (b, cur) => ({ get: (k, o) => b.get(svKey(cur(), k), o), getWithMetadata: (k, o) => b.getWithMetadata(svKey(cur(), k), o), setJSON: (k, d, o) => b.setJSON(svKey(cur(), k), d, o), delete: k => b.delete(svKey(cur(), k)) });
+const newCode = () => Array.from(randomBytes(8), x => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[x % 32]).join('');
 const J = (d, s = 200, h = {}) => new Response(JSON.stringify(d), { status: s, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...h } });
 const today = () => new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10);   // Manila date (UTC+8), not the server's UTC date
 const hp = (pw, salt) => scryptSync(pw, salt, 64).toString('hex');
@@ -30,6 +36,8 @@ const ROLE_ORDER = { admin: 0, host: 1, staff: 2 };
 const MAX_TAGS = 20, TAG_ID = /^[a-z0-9-]{1,18}$/;   // custom roles ("tags"): id = slug of the name; each one owns a private chat channel called <id>-chat (<= 23 chars)
 const slug = (v, n) => String(v || '').trim().toLowerCase().replace(/[\s_]+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-+/, '').slice(0, n).replace(/-+$/, '');
 const tagChan = id => id + '-chat';
+const POST_MAX = 500, REPLY_MAX = 300, POST_KEEP = 200, REPLY_KEEP = 100;   // profile posts: characters per post · per reply · posts kept per person · replies per post
+const MAX_FR = 40, DM_MAX = 100, DM_OPEN = 3, UID = /^[\w-]{1,40}$/;   // friends: cap per person · private messages kept per conversation · conversations sent per poll · user-id shape
 
 // ---------- storage helpers ----------
 // Read-modify-write with optimistic concurrency (retries if someone else wrote first).
@@ -60,6 +68,35 @@ async function getUsers(st) {
 }
 const mutUsers = (st, fn) => mutate(st, 'users', usersInit, us => { us.forEach(u => Object.assign(u, normUser(u))); return fn(us); });
 const mutShared = (st, fn) => mutate(st, 'shared', () => ({ tasks: [] }), fn);
+
+// ---------- friends + private messages ----------
+// Storage: fr:<userId> = { f:[friend ids], in:[requests I received], out:[requests I sent] } · dm:<idA>~<idB> (ids sorted) = { rev, msgs[] }.
+// Each side keeps its own list, so a request touches two blobs; the lists are only trusted from the viewer's own side.
+const frInit = () => ({ f: [], in: [], out: [] });
+const frGet = async (st, id) => { const d = await st.get('fr:' + id, { type: 'json' }); return d ? { f: uniq(d.f), in: uniq(d.in), out: uniq(d.out) } : frInit(); };
+const mutFr = (st, id, fn) => mutate(st, 'fr:' + id, frInit, d => { d.f = uniq(d.f); d.in = uniq(d.in); d.out = uniq(d.out); return fn(d); });
+const frState = (f, id) => f.f.includes(id) ? 'friends' : f.out.includes(id) ? 'sent' : f.in.includes(id) ? 'received' : 'none';
+const dmKey = (a, b) => 'dm:' + [a, b].sort().join('~');
+// a and b become friends (any pending request between them is cleared)
+const frLink = async (st, a, b) => { for (const [x, y] of [[a, b], [b, a]]) await mutFr(st, x, d => { d.in = d.in.filter(i => i !== y); d.out = d.out.filter(i => i !== y); if (!d.f.includes(y)) d.f.push(y); }); };
+// remove every tie between a and b: decline, cancel or unfriend
+const frDrop = async (st, a, b) => { for (const [x, y] of [[a, b], [b, a]]) await mutFr(st, x, d => { d.f = d.f.filter(i => i !== y); d.in = d.in.filter(i => i !== y); d.out = d.out.filter(i => i !== y); }); };
+const dmMsg = (m, me) => ({ id: m.id, uid: m.uid, text: m.text, ts: m.ts, edited: !!m.edited, mine: m.uid === me.id });   // private: only the author may edit or delete, nobody else (Heads included) can read
+
+// ---------- notifications (bell next to the profile picture) ----------
+const NOTIF_MAX = 50;   // newest notifications kept per user
+// Push one notification to each recipient (never to the actor). Best-effort: a failure here must not break the task action.
+async function notify(st, toIds, n) {
+  for (const id of uniq(toIds)) {
+    if (id === n.by) continue;
+    try {
+      await mutate(st, 'notif:' + id, () => ({ items: [] }), d => {
+        d.items.unshift({ id: 'n_' + randomBytes(5).toString('hex'), t: Date.now(), read: false, ...n });
+        d.items.length = Math.min(d.items.length, NOTIF_MAX);
+      });
+    } catch {}
+  }
+}
 
 // ---------- custom roles ("tags") ----------
 // Storage: tags = [{id,name}] · users[].tagIds = [tagId] · chat:channels entries with a `tag` field are private to people holding that tag.
@@ -140,12 +177,15 @@ const chatMsg = (m, me, us) => {
     text: m.text, ts: m.ts, edited: !!m.edited, mine: m.uid === me.id, canDel: m.uid === me.id || me.role === 'admin' };   // Heads can remove anyone's message; only the author can edit
 };
 const chatText = v => { const t = String(v ?? '').trim().slice(0, 1000); if (!t) throw H('Type a message first.'); return t; };
+const parseSeenU = q => Object.fromEntries(String(q || '').split(',').map(p => p.split(':')).filter(([k, v]) => UID.test(k || '') && v !== '' && Number(v) >= 0).map(([k, v]) => [k, Number(v)]));   // same as parseSeen but for user ids (letters, digits, _ -)
 const parseSeen = q => Object.fromEntries(String(q || '').split(',').map(p => p.split(':')).filter(([k, v]) => CH_ID.test(k || '') && v !== '' && Number(v) >= 0).map(([k, v]) => [k, Number(v)]));
 
 // ---------- handler ----------
 export default async (req) => {
   try {
-    const st = store();
+    const bs = base();
+    let SV = DEF_SV;
+    const st = scoped(bs, () => SV);
     const path = new URL(req.url).pathname.replace(/^\/api/, '').replace(/\/$/, '');
     const m = req.method;
     let body = {};
@@ -191,11 +231,93 @@ export default async (req) => {
     // ----- everything below needs a session -----
     const sess = /^[a-f0-9]{48}$/.test(token) ? await st.get('sess:' + token, { type: 'json' }) : null;
     if (!sess || sess.exp < Date.now()) throw H('Not logged in', 401);
-    const us = await getUsers(st);
-    const me = us.find(x => x.id === sess.id && x.active);
-    if (!me || (sess.pv || 0) !== me.pv) throw H('Not logged in', 401);   // disabled user, or password changed/reset since this login
+    const allUs = await getUsers(st);   // every account (global)
+    const meG = allUs.find(x => x.id === sess.id && x.active);
+    if (!meG || (sess.pv || 0) !== meG.pv) throw H('Not logged in', 401);   // disabled user, or password changed/reset since this login
 
-    if (path === '/me' && m === 'GET') return J({ user: { ...pub(me, us), overview: me.id === DEFAULT_ADMIN }, board: await st.get('board:' + me.id, { type: 'json' }) });
+    // ----- servers registry (global, works whatever X-Server says) -----
+    const srvList = async () => (await st.get('servers', { type: 'json' })) || [];
+    const mutSrv = fn => mutate(st, 'servers', () => [], fn);
+    const svName = n => { const t = String(n || '').trim().replace(/\s+/g, ' ').slice(0, 30); if (t.length < 2) throw H('Server name: 2–30 characters.'); return t; };
+    const dropMember = async (sid, uid) => {   // remove a person's position/role traces from one server's shared tasks + other members' supervisor links
+      await mutate(bs, svKey(sid, 'shared'), () => ({ tasks: [] }), sh => sh.tasks.forEach(t => { t.assignees = t.assignees.filter(a => a.id !== uid); t.hostIds = t.hostIds.filter(h => h !== uid); if (!t.assignees.length) t.status = 'trash'; }));
+    };
+    if (path === '/servers' && m === 'GET') {
+      const list = await srvList();
+      const def = { id: DEF_SV, name: SV_NAME, owner: meG.id === DEFAULT_ADMIN, role: meG.role, members: allUs.filter(u => u.active).length, createdBy: allUs.find(u => u.id === DEFAULT_ADMIN)?.name || 'Administrator', isDefault: true };
+      const mine = list.filter(x => x.members[meG.id]).map(x => ({ id: x.id, name: x.name, owner: x.ownerId === meG.id, role: x.members[meG.id].role, members: Object.keys(x.members).length, createdBy: allUs.find(u => u.id === x.ownerId)?.name || 'Unknown', ...(x.members[meG.id].role === 'admin' ? { code: x.code } : {}) }));
+      return J({ servers: [def, ...mine] });
+    }
+    if (path === '/servers' && m === 'POST') {
+      const name = svName(body.name);
+      const out = await mutSrv(list => {
+        if (list.filter(x => x.ownerId === meG.id).length >= MAX_OWN) throw H(`You can own up to ${MAX_OWN} servers.`);
+        const x = { id: 's_' + randomBytes(4).toString('hex'), name, ownerId: meG.id, created: today(), code: newCode(), members: { [meG.id]: { role: 'admin', hostIds: [], tagIds: [] } } };
+        list.push(x); return x;
+      });
+      return J({ id: out.id, name: out.name, code: out.code }, 201);
+    }
+    if (path === '/servers/join' && m === 'POST') {
+      const code = String(body.code || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (code.length !== 8) throw H('Enter the 8-character invite code.');
+      const out = await mutSrv(list => {
+        const x = list.find(v => same(v.code, code));
+        if (!x) throw H('Invalid invite code.', 404);
+        if (x.members[meG.id]) throw H('You are already in that server.');
+        if (Object.keys(x.members).length >= MAX_MEM) throw H('That server is full.');
+        x.members[meG.id] = { role: 'staff', hostIds: [], tagIds: [] }; return x;
+      });
+      return J({ id: out.id, name: out.name });
+    }
+    const svm = path.match(/^\/servers\/(s_[a-f0-9]{8})(?:\/(leave|invite))?$/);
+    if (svm) {
+      const sid = svm[1], act = svm[2];
+      if (!act && m === 'PUT') {   // rename (server Head)
+        const name = svName(body.name);
+        await mutSrv(list => { const x = list.find(v => v.id === sid); if (!x || x.members[meG.id]?.role !== 'admin') throw H('Only a server Head can rename it.', 403); x.name = name; });
+        return J({ ok: 1 });
+      }
+      if (act === 'invite' && m === 'POST') {   // new invite code (server Head)
+        const code = await mutSrv(list => { const x = list.find(v => v.id === sid); if (!x || x.members[meG.id]?.role !== 'admin') throw H('Only a server Head can do that.', 403); return (x.code = newCode()); });
+        return J({ code });
+      }
+      if (act === 'leave' && m === 'POST') {
+        await mutSrv(list => {
+          const x = list.find(v => v.id === sid); if (!x || !x.members[meG.id]) throw H('Server not found', 404);
+          if (x.ownerId === meG.id) throw H('The owner cannot leave. Delete the server instead.');
+          delete x.members[meG.id];
+          Object.values(x.members).forEach(mm => { mm.hostIds = mm.hostIds.filter(h => h !== meG.id); });
+        });
+        await dropMember(sid, meG.id);
+        return J({ ok: 1 });
+      }
+      if (!act && m === 'DELETE') {   // owner deletes the server and everything in it
+        let gone;
+        await mutSrv(list => {
+          const i = list.findIndex(v => v.id === sid); if (i < 0) throw H('Server not found', 404);
+          if (list[i].ownerId !== meG.id) throw H('Only the server owner can delete it.', 403);
+          gone = list.splice(i, 1)[0];
+        });
+        const chans = (await bs.get(svKey(sid, 'chat:channels'), { type: 'json' })) || [];
+        for (const k of ['shared', 'tags', 'chat:channels', 'chat:general', ...chans.map(c => 'chat:' + c.id)]) await bs.delete(svKey(sid, k));
+        return J({ ok: 1 });
+      }
+    }
+
+    // ----- pick the active server: X-Server header (default = CEPALCO). 'us' = the people of THIS server with their server position/roles -----
+    let us = allUs;
+    const want = req.headers.get('x-server') || DEF_SV;
+    if (want !== DEF_SV) {
+      const x = SV_ID.test(want) ? (await srvList()).find(v => v.id === want) : null;
+      if (!x || !x.members[meG.id]) throw H('You are not a member of that server.', 403);
+      SV = want;
+      us = allUs.filter(u => u.active && x.members[u.id]).map(u => { const mm = x.members[u.id]; return { ...u, role: mm.role, hostIds: mm.role === 'staff' ? mm.hostIds : [], tagIds: mm.tagIds }; });
+    }
+    const me = us.find(u => u.id === meG.id);
+    if (!me) throw H('You are not a member of that server.', 403);
+    const nameUs = us.concat(allUs.filter(g => !us.some(u => u.id === g.id)));   // server people first, then anyone else (old chat senders, friends)
+
+    if (path === '/me' && m === 'GET') return J({ user: { ...pub(me, us), overview: me.id === DEFAULT_ADMIN && SV === DEF_SV }, server: { id: SV, name: SV === DEF_SV ? SV_NAME : (await srvList()).find(v => v.id === SV)?.name }, board: await st.get('board:' + me.id, { type: 'json' }) });
 
     if (path === '/change-password' && m === 'POST') {
       const cur = String(body.currentPassword || ''), next = String(body.newPassword || '');
@@ -210,7 +332,7 @@ export default async (req) => {
     // ----- profile picture -----
     const am = path.match(/^\/avatar(?:\/([\w-]+))?$/);   // /avatar = mine, /avatar/<id> = a teammate's (shown in the group chat)
     if (am && m === 'GET') {
-      const owner = am[1] ? us.find(x => x.id === am[1]) : me;
+      const owner = am[1] ? nameUs.find(x => x.id === am[1]) : me;
       if (owner && !canSee(owner, me)) throw H('No profile picture', 404);   // hidden profile: the photo is not served to others
       const a = await st.get('avatar:' + (am[1] || me.id), { type: 'json' });
       if (!a) throw H('No profile picture', 404);
@@ -242,32 +364,192 @@ export default async (req) => {
     }
     const pm = path.match(/^\/profile\/([\w-]+)$/);
     if (pm && m === 'GET') {
-      const t = us.find(x => x.id === pm[1]);
+      const t = nameUs.find(x => x.id === pm[1]);
       if (!t || (!t.active && me.role !== 'admin')) throw H('Profile not found', 404);
       const pr = t.id === me.id ? { t: Date.now() } : await st.get('pres:' + t.id, { type: 'json' });
       const online = !!pr && Date.now() - pr.t < ONLINE_MS;
-      const base = { id: t.id, name: t.name || t.username, role: t.role, online, mine: t.id === me.id, hiddenByUser: !!t.profileHidden };
+      const base = { id: t.id, name: t.name || t.username, role: t.role, online, mine: t.id === me.id, hiddenByUser: !!t.profileHidden, friend: t.id === me.id ? 'self' : frState(await frGet(st, me.id), t.id) };
       if (!canSee(t, me)) return J({ ...base, hidden: true });
       const tags = await tagsRaw(st);
       return J({ ...base, hidden: false, username: t.username, avatarAt: t.avatarAt || 0, created: t.created || 0, lastSeen: pr ? pr.t : 0,
         tagNames: (t.tagIds || []).map(id => tags.find(x => x.id === id)?.name).filter(Boolean),
-        hostNames: t.role === 'staff' ? t.hostIds.map(id => us.find(x => x.id === id)?.name).filter(Boolean) : [] });
+        hostNames: t.role === 'staff' ? t.hostIds.map(id => nameUs.find(x => x.id === id)?.name).filter(Boolean) : [] });
+    }
+
+    // ----- profile posts (Threads style): short text posts on your profile, with likes and replies -----
+    // Storage: posts:<userId> = { items: [{ id, ts, text, likes: [userId], replies: [{ id, uid, ts, text }] }] }, newest first.
+    const postClean = (v, n) => String(v ?? '').replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').replace(/\n{3,}/g, '\n\n').trim().slice(0, n);
+    const postsGet = async id => { const d = await st.get('posts:' + id, { type: 'json' }); return d && Array.isArray(d.items) ? d : { items: [] }; };
+    const mutPosts = (id, fn) => mutate(st, 'posts:' + id, () => ({ items: [] }), d => { if (!Array.isArray(d.items)) d.items = []; return fn(d); });
+    const postOwner = id => {   // the person whose profile the post lives on: must exist and be viewable by me
+      const t = nameUs.find(x => x.id === id);
+      if (!t || (!t.active && me.role !== 'admin')) throw H('Profile not found', 404);
+      if (!canSee(t, me)) throw H('This profile is hidden.', 403);
+      return t;
+    };
+    const snip = s => s.length > 60 ? s.slice(0, 57) + '…' : s;
+    const postDTO = (p, owner) => ({
+      id: p.id, ts: p.ts, text: p.text, likes: p.likes.length, liked: p.likes.includes(me.id), canDelete: owner.id === me.id || me.role === 'admin',
+      replies: p.replies.map(r => { const u = nameUs.find(x => x.id === r.uid); return { id: r.id, uid: r.uid, name: u ? (u.name || u.username) : 'Deleted user', avatarAt: avAt(u, me), ts: r.ts, text: r.text, canDelete: r.uid === me.id || owner.id === me.id || me.role === 'admin' }; }),
+    });
+    const pm1 = path.match(/^\/posts\/([\w-]+)$/), pm2 = path.match(/^\/posts\/([\w-]+)\/([\w-]+)$/),
+      pm3 = path.match(/^\/posts\/([\w-]+)\/([\w-]+)\/(like|reply)$/), pm4 = path.match(/^\/posts\/([\w-]+)\/([\w-]+)\/reply\/([\w-]+)$/);
+    if (path === '/posts' && m === 'POST') {   // new post on MY profile
+      const text = postClean(body.text, POST_MAX);
+      if (!text) throw H('Write something first.');
+      let dto = null;
+      await mutPosts(me.id, d => {
+        if (d.items[0] && Date.now() - d.items[0].ts < 2000) throw H('Slow down a little.', 429);
+        const p = { id: 'p_' + randomBytes(5).toString('hex'), ts: Date.now(), text, likes: [], replies: [] };
+        d.items.unshift(p); d.items.length = Math.min(d.items.length, POST_KEEP);
+        dto = postDTO(p, me);
+      });
+      return J(dto, 201);
+    }
+    if (pm1 && m === 'GET') {
+      const t = nameUs.find(x => x.id === pm1[1]);
+      if (!t || (!t.active && me.role !== 'admin')) throw H('Profile not found', 404);
+      if (!canSee(t, me)) return J({ hidden: true, mine: false, posts: [] });
+      return J({ hidden: false, mine: t.id === me.id, max: POST_MAX, replyMax: REPLY_MAX, posts: (await postsGet(t.id)).items.map(p => postDTO(p, t)) });
+    }
+    if (pm2 && m === 'DELETE') {
+      const owner = postOwner(pm2[1]);
+      if (owner.id !== me.id && me.role !== 'admin') throw H('You can only delete your own posts.', 403);
+      await mutPosts(owner.id, d => { const i = d.items.findIndex(p => p.id === pm2[2]); if (i < 0) throw H('Post not found', 404); d.items.splice(i, 1); });
+      return J({ ok: 1 });
+    }
+    if (pm3 && m === 'POST') {
+      const owner = postOwner(pm3[1]), byName = me.name || me.username;
+      if (pm3[3] === 'like') {
+        let out = null;
+        await mutPosts(owner.id, d => {
+          const p = d.items.find(x => x.id === pm3[2]); if (!p) throw H('Post not found', 404);
+          const i = p.likes.indexOf(me.id); if (i >= 0) p.likes.splice(i, 1); else p.likes.push(me.id);
+          out = { liked: i < 0, likes: p.likes.length, text: p.text };
+        });
+        if (out.liked && owner.id !== me.id) {   // tell the author once per person per post (re-liking after an unlike stays quiet)
+          const nd = (await st.get('notif:' + owner.id, { type: 'json' })) || { items: [] };
+          if (!nd.items.some(n => n.type === 'post_like' && n.by === me.id && n.pid === pm3[2])) await notify(st, [owner.id], { type: 'post_like', by: me.id, byName, title: snip(out.text), pid: pm3[2] });
+        }
+        return J({ liked: out.liked, likes: out.likes });
+      }
+      const text = postClean(body.text, REPLY_MAX);
+      if (!text) throw H('Write a reply first.');
+      let reply = null, ptext = '';
+      await mutPosts(owner.id, d => {
+        const p = d.items.find(x => x.id === pm3[2]); if (!p) throw H('Post not found', 404);
+        if (p.replies.length >= REPLY_KEEP) throw H('This post has reached its reply limit.');
+        reply = { id: 'r_' + randomBytes(5).toString('hex'), uid: me.id, ts: Date.now(), text };
+        p.replies.push(reply); ptext = p.text;
+      });
+      await notify(st, [owner.id], { type: 'post_reply', by: me.id, byName, title: snip(ptext), pid: pm3[2] });
+      return J({ id: reply.id, uid: me.id, name: byName, avatarAt: me.avatarAt || 0, ts: reply.ts, text, canDelete: true }, 201);
+    }
+    if (pm4 && m === 'DELETE') {
+      const owner = postOwner(pm4[1]);
+      await mutPosts(owner.id, d => {
+        const p = d.items.find(x => x.id === pm4[2]); if (!p) throw H('Post not found', 404);
+        const i = p.replies.findIndex(r => r.id === pm4[3]); if (i < 0) throw H('Reply not found', 404);
+        if (p.replies[i].uid !== me.id && owner.id !== me.id && me.role !== 'admin') throw H('You can only delete your own replies.', 403);
+        p.replies.splice(i, 1);
+      });
+      return J({ ok: 1 });
+    }
+
+    // ----- friends (requests, accept, unfriend) -----
+    const fcard = u => ({ id: u.id, name: u.name || u.username, role: u.role, avatarAt: avAt(u, me) });
+    if (path === '/friends' && m === 'GET') {
+      const f = await frGet(st, me.id);
+      const pick = ids => ids.map(id => allUs.find(u => u.id === id && u.active)).filter(Boolean).map(fcard);
+      return J({ friends: pick(f.f), incoming: pick(f.in), outgoing: pick(f.out),
+        others: allUs.filter(u => u.active && u.id !== me.id).sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(u => ({ ...fcard(u), state: frState(f, u.id) })) });
+    }
+    const fm = path.match(/^\/friends\/(request|accept|decline|cancel)$/);
+    if (fm && m === 'POST') {
+      const other = allUs.find(u => u.id === String(body.userId || '') && u.active);
+      if (!other || other.id === me.id) throw H('Person not found', 404);
+      const mine = await frGet(st, me.id), act = fm[1], byName = me.name || me.username;
+      const link = async () => {
+        if (mine.f.length >= MAX_FR || (await frGet(st, other.id)).f.length >= MAX_FR) throw H(`Friend lists are limited to ${MAX_FR} people.`);
+        await frLink(st, me.id, other.id);
+        await notify(st, [other.id], { type: 'friend_ok', by: me.id, byName });
+        return J({ state: 'friends' });
+      };
+      if (act === 'request') {
+        if (mine.f.includes(other.id)) throw H('You are already friends.');
+        if (mine.in.includes(other.id)) return link();                       // they already asked me: asking back = accepting
+        if (mine.out.includes(other.id)) return J({ state: 'sent' });
+        if (mine.f.length + mine.out.length >= MAX_FR) throw H(`You can have up to ${MAX_FR} friends and pending requests.`);
+        await mutFr(st, other.id, d => { if (!d.in.includes(me.id)) { if (d.in.length >= MAX_FR * 2) throw H('This person has too many pending requests.'); d.in.push(me.id); } });   // them first: it can refuse
+        await mutFr(st, me.id, d => { if (!d.out.includes(other.id)) d.out.push(other.id); });
+        await notify(st, [other.id], { type: 'friend_req', by: me.id, byName });
+        return J({ state: 'sent' }, 201);
+      }
+      if (act === 'accept') {
+        if (!mine.in.includes(other.id)) throw H('There is no friend request from this person.', 404);
+        return link();
+      }
+      if (mine.f.includes(other.id)) throw H('You are already friends.');   // decline / cancel only ever touch pending requests
+      await frDrop(st, me.id, other.id);
+      return J({ state: 'none' });
+    }
+    const fum = path.match(/^\/friends\/([\w-]+)$/);
+    if (fum && m === 'DELETE') {   // unfriend (the conversation is kept, but sending stops until you are friends again)
+      await frDrop(st, me.id, fum[1]);
+      return J({ ok: 1 });
+    }
+
+    // ----- private messages between friends (shown in the chat dock; polled together with /api/chat) -----
+    const dmPeer = async id => {
+      const u = allUs.find(x => x.id === String(id || '') && x.active);
+      if (!u || u.id === me.id || !(await frGet(st, me.id)).f.includes(u.id) || !(await frGet(st, u.id)).f.includes(me.id)) throw H('You can only message your friends.', 403);
+      return u;
+    };
+    if (path === '/dm/send' && m === 'POST') {
+      const peer = await dmPeer(body.to), text = chatText(body.text);
+      let msg;
+      await mutate(st, dmKey(me.id, peer.id), () => ({ rev: 0, msgs: [] }), d => {
+        msg = { id: 'd_' + randomBytes(6).toString('hex'), uid: me.id, text, ts: Math.max(Date.now(), (d.msgs.at(-1)?.ts || 0) + 1) };
+        d.msgs.push(msg); if (d.msgs.length > DM_MAX) d.msgs.splice(0, d.msgs.length - DM_MAX); d.rev = (d.rev || 0) + 1;
+      });
+      return J(dmMsg(msg, me), 201);
+    }
+    const dmm = path.match(/^\/dm\/msg\/([\w-]+)$/);
+    if (dmm && (m === 'PUT' || m === 'DELETE')) {
+      const wid = new URL(req.url).searchParams.get('with') || '';
+      if (m === 'PUT') await dmPeer(wid);
+      else if (!UID.test(wid) || wid === me.id) throw H('Conversation not found', 404);
+      const text = m === 'PUT' ? chatText(body.text) : '';
+      const out = await mutate(st, dmKey(me.id, wid), () => ({ rev: 0, msgs: [] }), d => {
+        const i = d.msgs.findIndex(x => x.id === dmm[1]), x = d.msgs[i];
+        if (!x) throw H('Message not found', 404);
+        if (x.uid !== me.id) throw H(m === 'PUT' ? 'You can only edit your own messages.' : 'You can only delete your own messages.', 403);
+        d.rev = (d.rev || 0) + 1;
+        if (m === 'DELETE') { d.msgs.splice(i, 1); return null; }
+        x.text = text; x.edited = true; return x;
+      });
+      return out ? J(dmMsg(out, me)) : J({ ok: 1 });
     }
 
     // ----- group chat (floating dock) -----
     if (path === '/chat' && m === 'GET') {
       const q = new URL(req.url).searchParams, now = Date.now();
-      const chans = await chanList(st, me);
+      const [chans, fr] = await Promise.all([chanList(st, me), frGet(st, me.id)]);
       const ch = chans.find(c => c.id === q.get('ch'))?.id || null;
       const ty = chans.find(c => c.id === q.get('typing'))?.id || null;
       const chTag = chans.find(c => c.id === ch)?.tag || null;                                          // in a role channel, "online" lists only that role's members
       const people = us.filter(u => u.active && (!chTag || u.tagIds.includes(chTag)));
-      const mePres = { t: now, ty: ty ? { c: ty, t: now } : null };
+      const fids = fr.f.filter(id => allUs.some(u => u.id === id && u.active)).slice(0, MAX_FR);                  // my friends (active accounts only)
+      const dmOpen = uniq(String(q.get('dm') || '').split(',')).filter(id => fids.includes(id)).slice(0, DM_OPEN);   // private conversations the browser has open right now
+      const dmTy = fids.includes(q.get('dtyping')) ? q.get('dtyping') : null;
+      const mePres = { t: now, ty: ty ? { c: ty, t: now, sv: SV } : null, dty: dmTy ? { to: dmTy, t: now } : null };
+      const pIds = [...new Set([...people.map(u => u.id), ...fids])];
       // Everything below is independent, so run it all at once instead of one blob read after another (this was most of the server-side delay).
-      const [, presList, datas] = await Promise.all([
+      const [, presList, datas, dmDatas] = await Promise.all([
         st.setJSON('pres:' + me.id, mePres),                                                              // heartbeat: one key per person, so polls never collide
-        Promise.all(people.map(async u => [u.id, u.id === me.id ? mePres : await st.get('pres:' + u.id, { type: 'json' })])),
+        Promise.all(pIds.map(async id => [id, id === me.id ? mePres : await st.get('pres:' + id, { type: 'json' })])),
         Promise.all(chans.map(c => st.get('chat:' + c.id, { type: 'json' }))),
+        Promise.all(fids.map(id => st.get(dmKey(me.id, id), { type: 'json' }))),
       ]);
       const pres = Object.fromEntries(presList);
       const on = people.filter(u => pres[u.id] && now - pres[u.id].t < ONLINE_MS);
@@ -278,16 +560,29 @@ export default async (req) => {
         const d = datas[i] || { rev: 0, msgs: [] };
         const last = d.msgs.at(-1)?.ts || 0; newest = Math.max(newest, last);
         channels.push({ id: c.id, name: c.name, tag: c.tag || null, last, unread: Math.min(99, d.msgs.filter(x => x.uid !== me.id && x.ts > (seen[c.id] ?? unseen)).length) });
-        if (c.id === ch) { rev = d.rev || 0; if (rev !== Number(q.get('rev'))) msgs = d.msgs.slice(-CHAT_SHOW).map(x => chatMsg(x, me, us)); }
+        if (c.id === ch) { rev = d.rev || 0; if (rev !== Number(q.get('rev'))) msgs = d.msgs.slice(-CHAT_SHOW).map(x => chatMsg(x, me, nameUs)); }
       });
       // "hot" = ms since the last sign of a live conversation (a new message, or someone else typing). The browser polls faster only while the chat is hot.
-      const typingNow = on.some(u => u.id !== me.id && pres[u.id].ty?.c === ch && now - pres[u.id].ty.t < TYPING_MS);
-      const hot = typingNow ? 0 : newest ? Math.max(0, now - newest) : 1e9;
+      const typingNow = on.some(u => u.id !== me.id && pres[u.id].ty?.c === ch && pres[u.id].ty.sv === SV && now - pres[u.id].ty.t < TYPING_MS);
       const card = u => ({ id: u.id, name: u.name || u.username, role: u.role, avatarAt: avAt(u, me) });
+      // private messages: one entry per friend (unread count, last message preview, online, typing) + the messages of the conversations that are open
+      const dseenQ = q.get('dseen'), dseen = parseSeenU(dseenQ), dun = dseenQ ? 0 : Infinity, drev = parseSeenU(q.get('drev')), dms = {};
+      let dmTyping = false;
+      const friends = fids.map((id, i) => {
+        const u = allUs.find(x => x.id === id), d = dmDatas[i] || { rev: 0, msgs: [] }, lm = d.msgs.at(-1), p = pres[id];
+        const online = !!p && now - p.t < ONLINE_MS, typing = online && p.dty?.to === me.id && now - p.dty.t < TYPING_MS;
+        if (typing) dmTyping = true;
+        if (dmOpen.includes(id)) { const r = d.rev || 0; dms[id] = { rev: r, ...(r !== (drev[id] ?? -1) ? { msgs: d.msgs.slice(-CHAT_SHOW).map(x => dmMsg(x, me)) } : {}) }; }
+        newest = Math.max(newest, lm?.ts || 0);
+        return { ...card(u), online, typing, last: lm?.ts || 0, prev: lm ? lm.text.slice(0, 60) : '', pm: !!lm && lm.uid === me.id,
+          unread: Math.min(99, d.msgs.filter(x => x.uid !== me.id && x.ts > (dseen[id] ?? dun)).length) };
+      });
+      const asCards = ids => ids.map(id => allUs.find(u => u.id === id && u.active)).filter(Boolean).map(card);
+      const hot = typingNow || dmTyping ? 0 : newest ? Math.max(0, now - newest) : 1e9;
       return J({
-        me: card(me), ch, rev, hot, channels, avs: Object.fromEntries(us.filter(u => avAt(u, me)).map(u => [u.id, u.avatarAt])),   // current photo version per person, so chat avatars refresh even when no message changed
+        me: card(me), ch, rev, hot, channels, friends, dms, reqIn: asCards(fr.in), reqOut: fr.out, avs: Object.fromEntries(allUs.filter(u => avAt(u, me)).map(u => [u.id, u.avatarAt])),   // current photo version per person, so chat avatars refresh even when no message changed
          ...(msgs ? { msgs } : {}),
-        online: on.sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || (a.name || '').localeCompare(b.name || '')).map(u => ({ ...card(u), typing: u.id !== me.id && pres[u.id].ty?.c === ch && now - pres[u.id].ty.t < TYPING_MS })),
+        online: on.sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || (a.name || '').localeCompare(b.name || '')).map(u => ({ ...card(u), typing: u.id !== me.id && pres[u.id].ty?.c === ch && pres[u.id].ty.sv === SV && now - pres[u.id].ty.t < TYPING_MS })),
         offline: people.length - on.length,
         offUsers: people.filter(u => !on.includes(u)).sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || (a.name || '').localeCompare(b.name || '')).map(card),
       });
@@ -301,7 +596,7 @@ export default async (req) => {
         msg = { id: 'm_' + randomBytes(6).toString('hex'), uid: me.id, text, ts: Math.max(Date.now(), (d.msgs.at(-1)?.ts || 0) + 1) };   // ts is strictly increasing per channel
         d.msgs.push(msg); if (d.msgs.length > CHAT_MAX) d.msgs.splice(0, d.msgs.length - CHAT_MAX); d.rev = (d.rev || 0) + 1;
       });
-      return J(chatMsg(msg, me, us), 201);
+      return J(chatMsg(msg, me, nameUs), 201);
     }
     const cm = path.match(/^\/chat\/msg\/([\w-]+)$/);
     if (cm && (m === 'PUT' || m === 'DELETE')) {
@@ -315,7 +610,7 @@ export default async (req) => {
         if (x.uid !== me.id) throw H('You can only edit your own messages.', 403);
         x.text = text; x.edited = true; d.rev = (d.rev || 0) + 1; return x;
       });
-      return out ? J(chatMsg(out, me, us)) : J({ ok: 1 });
+      return out ? J(chatMsg(out, me, nameUs)) : J({ ok: 1 });
     }
     if (path === '/chat/channels' && m === 'POST') {
       if (me.role !== 'admin') throw H('Only Heads can add channels.', 403);
@@ -374,11 +669,14 @@ export default async (req) => {
       const t = { id: 's_' + randomBytes(6).toString('hex'), ...f, pinned: !!body.pinned, status: 'active', color: pal[Math.floor(Math.random() * pal.length)],
         created: today(), createdBy: me.id, hostIds: me.role === 'host' ? [me.id] : hostsFor(ids, us), assignees: ids.map(id => ({ id, done: false, doneAt: null })) };
       await mutShared(st, sh => { sh.tasks.push(t); });
+      await notify(st, ids, { type: 'assigned', by: me.id, byName: me.name || me.username, taskId: t.id, title: t.title, date: t.date });
       return J(taskDTO(t, me, us), 201);
     }
     const sm = path.match(/^\/shared\/([\w-]+)$/);
     if (sm && (m === 'PUT' || m === 'DELETE')) {
+      const ev = [];   // notifications to send once the task is saved
       const out = await mutShared(st, sh => {
+        ev.length = 0;
         const i = sh.tasks.findIndex(x => x.id === sm[1]);
         const t = sh.tasks[i];
         if (!t || !visible(me, t)) throw H('Task not found', 404);
@@ -394,6 +692,9 @@ export default async (req) => {
           const v = !!body.done, stamp = v ? today() : null;
           if (body.all) { if (!manage) throw H("You don't have permission to do that.", 403); t.assignees.forEach(a => { a.done = v; a.doneAt = stamp; }); }
           else { if (!mine) throw H('This task is not assigned to you.', 403); mine.done = v; mine.doneAt = stamp; }
+          const base = { by: me.id, byName: me.name || me.username, taskId: t.id, title: t.title, date: t.date };
+          if (v && !body.all) ev.push({ to: [t.createdBy, ...t.hostIds], n: { ...base, type: t.assignees.every(a => a.done) ? 'all_done' : 'done' } });
+          if (v && body.all) ev.push({ to: t.assignees.map(a => a.id), n: { ...base, type: 'closed' } });
         }
         if (['title', 'description', 'priority', 'date', 'pinned', 'assignees', 'status'].some(k => k in body)) {
           if (!manage) throw H("You don't have permission to do that.", 403);
@@ -404,18 +705,32 @@ export default async (req) => {
             if (!ids.length) throw H('Pick at least one person to assign.');
             const allowed = new Set([...assignable(me, us).map(u => u.id), ...t.assignees.map(a => a.id)]);
             if (ids.some(x => !allowed.has(x))) throw H('You can only assign tasks to your own team.', 403);
+            const fresh = ids.filter(id => !t.assignees.some(a => a.id === id));
+            if (fresh.length) ev.push({ to: fresh, n: { type: 'assigned', by: me.id, byName: me.name || me.username, taskId: t.id, title: t.title, date: t.date } });
             t.assignees = ids.map(id => t.assignees.find(a => a.id === id) || { id, done: false, doneAt: null });
             if (me.role === 'admin') t.hostIds = hostsFor(ids, us);
           }
         }
         return t;
       });
+      for (const e of ev) await notify(st, e.to, e.n);
       return out ? J(taskDTO(out, me, us)) : J({ ok: 1 });
+    }
+
+    // ----- notifications -----
+    if (path === '/notifications' && m === 'GET') {
+      const d = (await st.get('notif:' + me.id, { type: 'json' })) || { items: [] };
+      return J({ items: d.items, unread: d.items.filter(x => !x.read).length });
+    }
+    if (path === '/notifications/read' && m === 'POST') {
+      const ids = Array.isArray(body.ids) ? body.ids.map(String) : null;   // null/omitted = mark all
+      await mutate(st, 'notif:' + me.id, () => ({ items: [] }), d => { d.items.forEach(x => { if (!ids || ids.includes(x.id)) x.read = true; }); });
+      return J({ ok: 1 });
     }
 
     // ----- default admin only: read-only view of every user's personal sticky notes -----
     if (path === '/personal-all' && m === 'GET') {
-      if (me.id !== DEFAULT_ADMIN) throw H('Not allowed', 403);
+      if (me.id !== DEFAULT_ADMIN || SV !== DEF_SV) throw H('Not allowed', 403);
       const tasks = [];
       for (const u of us) { const b = await st.get('board:' + u.id, { type: 'json' }); for (const t of (b?.tasks || [])) tasks.push({ ...t, userId: u.id }); }
       const sh = (await st.get('shared', { type: 'json' })) || { tasks: [] };   // the admin can manage every shared task, so the DTO shows all of them (incl. trash)
@@ -425,6 +740,60 @@ export default async (req) => {
     // ----- admin only -----
     if (me.role !== 'admin') throw H('Admins only', 403);
 
+    if (SV !== DEF_SV) {   // inside a user-made server: members are existing accounts with a per-server position + roles
+      const mutMem = fn => mutSrv(list => { const x = list.find(v => v.id === SV); if (!x) throw H('Server not found', 404); return fn(x); });
+      const hostsOk = (x, ids) => uniq(ids).filter(h => x.members[h]?.role === 'host');
+      const headCount = x => Object.values(x.members).filter(v => v.role === 'admin').length;
+      if (path === '/users' && m === 'POST') {   // add an existing account by username
+        const un = String(body.username || '').trim().toLowerCase(), acc = allUs.find(u => u.username === un && u.active);
+        if (!acc) throw H('No active account with that username. Accounts are created by the CEPALCO admin; or share the invite code.', 404);
+        const role = ROLES.includes(body.role) ? body.role : 'staff', tags = await tagsRaw(st);
+        await mutMem(x => {
+          if (x.members[acc.id]) throw H('Already a member.');
+          if (Object.keys(x.members).length >= MAX_MEM) throw H('That server is full.');
+          x.members[acc.id] = { role, hostIds: role === 'staff' ? hostsOk(x, body.hostIds) : [], tagIds: cleanTags(body.tagIds, tags) };
+        });
+        return J({ ok: 1 });
+      }
+      const sum = path.match(/^\/users\/([\w-]+)$/);
+      if (sum && m === 'PUT') {
+        const tags = await tagsRaw(st);
+        await mutMem(x => {
+          const mm = x.members[sum[1]]; if (!mm) throw H('User not found', 404);
+          const role = ROLES.includes(body.role) ? body.role : mm.role;
+          if (sum[1] === me.id && role !== 'admin') throw H("You can't remove your own Head role.");
+          if (sum[1] === x.ownerId && role !== 'admin') throw H("The owner must stay a Head.");
+          mm.role = role; mm.hostIds = role === 'staff' ? hostsOk(x, body.hostIds) : [];
+          if ('tagIds' in body) mm.tagIds = cleanTags(body.tagIds, tags);
+          if (role !== 'host') Object.values(x.members).forEach(v => { v.hostIds = v.hostIds.filter(h => h !== sum[1] || role === 'host'); });
+        });
+        return J({ ok: 1 });
+      }
+      if (sum && m === 'DELETE') {
+        if (sum[1] === me.id) throw H("You can't remove yourself. Use Leave server.");
+        await mutMem(x => {
+          if (!x.members[sum[1]]) throw H('User not found', 404);
+          if (sum[1] === x.ownerId) throw H("You can't remove the owner.");
+          delete x.members[sum[1]]; Object.values(x.members).forEach(v => { v.hostIds = v.hostIds.filter(h => h !== sum[1]); });
+        });
+        await dropMember(SV, sum[1]);
+        return J({ ok: 1 });
+      }
+      const stm = path.match(/^\/tags\/([a-z0-9-]+)$/);
+      if (stm && m === 'PUT') {
+        if (!(await tagsRaw(st)).some(t => t.id === stm[1])) throw H('Role not found', 404);
+        const want = new Set(uniq(body.userIds));
+        await mutMem(x => Object.entries(x.members).forEach(([id, v]) => { const has = v.tagIds.includes(stm[1]); if (want.has(id) && !has) v.tagIds.push(stm[1]); else if (!want.has(id) && has) v.tagIds = v.tagIds.filter(t => t !== stm[1]); }));
+        return J({ ok: 1 });
+      }
+      if (stm && m === 'DELETE') {
+        const tags = await mutTags(st, list => { const i = list.findIndex(t => t.id === stm[1]); if (i < 0) throw H('Role not found', 404); list.splice(i, 1); return [...list]; });
+        await mutMem(x => Object.values(x.members).forEach(v => { v.tagIds = v.tagIds.filter(t => t !== stm[1]); }));
+        for (const c of await ensureTagChannels(st, tags)) await st.delete('chat:' + c);
+        return J({ ok: 1 });
+      }
+      if (path === '/backup') throw H('Backup/restore is available in CEPALCO Server only.', 403);
+    }
     if (path === '/users' && m === 'GET') return J({ users: us.map(u => pub(u, us)) });
     if (path === '/users' && m === 'POST') {
       const un = String(body.username || '').trim().toLowerCase();
@@ -476,6 +845,11 @@ export default async (req) => {
         await st.delete('board:' + id);
         await st.delete('avatar:' + id);
         await st.delete('pres:' + id);
+        await st.delete('posts:' + id);
+        const fo = await frGet(st, id);   // remove them from everyone's friend lists and delete their private conversations
+        for (const o of uniq([...fo.f, ...fo.in, ...fo.out])) { await frDrop(st, id, o); await st.delete(dmKey(id, o)); }
+        await st.delete('fr:' + id);
+        await mutate(st, 'servers', () => [], l => l.forEach(x => { delete x.members[id]; Object.values(x.members).forEach(v => { v.hostIds = v.hostIds.filter(h => h !== id); }); }));   // leave every user-made server
         await mutShared(st, sh => sh.tasks.forEach(t => {
           t.assignees = t.assignees.filter(a => a.id !== id); t.hostIds = t.hostIds.filter(h => h !== id);
           if (!t.assignees.length) t.status = 'trash';

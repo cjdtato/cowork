@@ -1,3 +1,6 @@
+# v2.6.0 — Servers
+New: CEPALCO Server (default) + user-created servers; left hover rail (`public/servers.js`); per-server roles, positions, chat and shared tasks; `X-Server` header; `/api/servers*` routes. No migration. See `SERVERS.md`.
+
 # Changes in this release
 
 ## 1. Faster group chat (messages reach other users in ~2 s)
@@ -50,3 +53,9 @@
 
 - Header tagline "Philippine calendar · tap a date..." and login line "Log in to open your calendar" replaced with italic *your cowork choice!*; "Version 1.0.0" (not italic) added: after it in the header, on its own line on the login page. Same single line height, so nothing shifts.
 - New logo: calendar-with-checkmark mark (inline SVG that follows the theme/mode accent colour) plus a "Co-Work" wordmark with an accent hyphen. Also used as the favicon (`public/logo.svg`). Replaces the 🗓️ emoji.
+
+# Friends & private messages
+See README ("Friends & private messages"). New: friends.js, friends.css; changed: api.mjs, chat.js, app.js, the three HTML pages, test/smoke.mjs (+41 checks).
+
+# Profile posts (Threads style)
+See README ("Profile posts"). New: `posts.js`, `posts.css`; changed: `api.mjs` (routes, limits, account-delete cleanup), `app.js` (own profile mount, bell text/icon/click), `chat.js` (profile viewer mount), the three HTML pages (stylesheet + script), `test/smoke.mjs` (+23 checks). The profile dialog is now wider (480 px) and scrolls when the posts are long.

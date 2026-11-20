@@ -41,7 +41,7 @@ netlify dev
 ```
 npm test
 ```
-Runs 111 checks against the real API with an in-memory stand-in for Netlify Blobs (no network, no extra dependencies).
+Runs 134 checks against the real API with an in-memory stand-in for Netlify Blobs (no network, no extra dependencies).
 See `IMPROVEMENTS.md` for the review, the logout fix, and what changed in v2.2.
 
 ## Custom roles & private role chats
@@ -64,10 +64,34 @@ A small 💬 **Group chat** pill sits in the bottom-right corner of every page (
 - Storage (same `taskboard` blob store): `chat:channels`, `chat:<channel>`, `pres:<userId>`. Chat is not part of the Users-page backup/restore.
 - Files: `public/chat.js`, `public/chat.css`, chat routes in `api.mjs`, plus `GET /api/avatar/<id>` so teammates' profile pictures show in the chat.
 
+## Friends & private messages
+Works like Facebook: send a friend request, and once it is accepted the two of you can message each other privately.
+- **Add a friend:** click anyone's name or photo (group chat, Online list) to open their profile and press **➕ Add friend**, or open **✉️ / 🧑‍🤝‍🧑 Friends** and use **Find people**. The other person gets a bell notification and a badge, and can **Accept** or **Decline** under *Requests*. You can cancel a request you sent, or **Unfriend** later. If two people ask each other, they simply become friends.
+- **Private chat:** open a friend from the *Friends* tab (or **💬 Message** on their profile). Each conversation is a small window docked beside the group chat (up to 3 at once; click the header to minimize). New messages pop up minimized with a badge; unread counts show on the Friends button. You can edit/delete your own messages. On phones it is a bottom sheet.
+- **Privacy:** only the two friends can read a conversation (Heads cannot). Unfriending stops sending; deleting an account removes its friendships and conversations.
+- **Limits:** 40 friends + pending requests per person, last 100 messages kept per conversation, 1000 characters per message.
+- **How it updates:** same poll as the group chat (`GET /api/chat` now also returns `friends`, `reqIn`, `reqOut`, `dms`), so no extra polling; each friend adds one blob read per poll.
+- **Storage:** `fr:<userId>` = `{f,in,out}`, `dm:<idA>~<idB>` = `{rev,msgs}`. Not part of backup/restore.
+- **API:** `GET /api/friends`, `POST /api/friends/{request|accept|decline|cancel}` (`{userId}`), `DELETE /api/friends/<id>`, `POST /api/dm/send` (`{to,text}`), `PUT|DELETE /api/dm/msg/<id>?with=<friendId>`; open conversations are requested via `/api/chat?dm=<ids>&drev=<id:rev>&dseen=<id:ts>`.
+- **Files:** `public/friends.js`, `public/friends.css`, hooks in `chat.js`, routes in `api.mjs`, notification types in `app.js`.
+
 ## Log repeating task (Personal calendar)
 On the **Personal** calendar a **🔁 Log repeating task** button sits just above the keyboard-shortcut tip (it is hidden on Shared). It opens a pane where you enter a title (and optional description / priority), a **start** and **end** date, and the **weekdays** to repeat on (quick presets: Weekdays, M·W·F, T·Th, Every day). A live line shows how many sticky notes will be created; optionally skip Philippine holidays. **Create notes** adds one normal sticky note per matching day (max 366 days per run).
 - Speed: the pane is built only when first opened; all notes are created in memory and saved with **one** `PUT /api/board` request, then the calendar redraws once. No server change.
 - Files: `public/repeat.js` (logic), a button in `public/index.html`, styles at the end of `public/style.css`. Details in `CHANGES.md`.
+
+## Profile posts (Threads style)
+Every profile has a **Threads** section: short text posts, likes and replies.
+- **Post:** open **👤 Profile** in the header, type under *Start a thread…* and press **Post** (500 characters, line breaks kept, links clickable, plain text only). Newest first; the last 200 are kept per person; you can delete your own posts.
+- **See others':** click anyone's name or photo (group chat, Online list, Friends) to open their profile; their posts are listed under their details. Anyone who can see the profile can **like** (♥, tap again to unlike) and **reply** (300 characters, up to 100 per post). The post owner, the reply's author and Heads can delete a reply; Heads can delete any post.
+- **Bell:** the author gets a notification when someone likes (once per person per post) or replies. Tapping it opens your profile.
+- **Privacy:** if a person hides their profile, their posts are hidden too (Heads and the owner still see them), and likes/replies are refused. Posting is limited to one post every 2 seconds.
+- **Storage:** `posts:<userId>` = `{items:[{id,ts,text,likes:[userId],replies:[{id,uid,ts,text}]}]}`. Deleted with the account. Not part of backup/restore.
+- **API:** `GET /api/posts/<userId>`, `POST /api/posts` (`{text}`), `DELETE /api/posts/<userId>/<postId>`, `POST /api/posts/<userId>/<postId>/like`, `POST .../reply` (`{text}`), `DELETE .../reply/<replyId>`.
+- **Files:** `public/posts.js`, `public/posts.css`, hooks in `app.js` (own profile + bell) and `chat.js` (profile viewer), routes in `api.mjs`. No extra polling: posts load when a profile is opened.
+
+## Servers (Discord-style)
+A hover menu on the left lists your servers. **CEPALCO Server** (created by the default admin) holds the existing positions (Head/Supervisor/Staff), custom roles and group chat. Anyone can create their own server (＋ Add a server), share its invite code, and manage their own positions, roles, chat and shared calendar there. Full notes: `SERVERS.md`.
 
 ## Upgrading from the earlier calendar-only version
 Same storage name, so existing accounts and personal boards carry over. Old `user` accounts become **Staff**; everyone is logged out once (new cookie sessions). Existing admin passwords are unchanged (`ADMIN_INITIAL_PASSWORD` is only used when no users exist yet).

@@ -4,6 +4,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400..700&family=Quicksand:wght@400..700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="chat.css">
+<link rel="stylesheet" href="friends.css">
+<link rel="stylesheet" href="posts.css">
 <style>table{width:100%;border-collapse:collapse;font-size:.8rem}th,td{text-align:left;padding:8px;border-bottom:1px solid var(--bd)}
 th{font-size:.65rem;text-transform:uppercase;opacity:.6}.fm{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;align-items:center}
 .tag{font-size:.65rem;font-weight:800;border-radius:6px;padding:2px 7px;background:var(--soft);border:1px solid var(--bd)}
@@ -15,6 +17,7 @@ th{font-size:.65rem;text-transform:uppercase;opacity:.6}.fm{display:grid;grid-te
 @media(max-width:700px){.top .row{display:grid;grid-template-columns:1fr 1fr}.top .row .btn:first-child{grid-column:1/-1}.fm{grid-template-columns:1fr}table{font-size:.75rem}td:last-child .mini{margin:2px 0}}</style></head>
 <body class="th-white">
 <script src="auth.js"></script>
+<script src="servers.js" defer></script>
 <header class="panel top"><div><h1>👥 Manage Users</h1><p class="sub">Head only · accounts, supervisors, and who reports to whom</p></div>
 <div class="row"><a class="btn" href="index.html">← Back to calendar</a><button class="btn" id="bx">⬇ Export Backup</button><button class="btn" id="bi">⬆ Import Backup</button><input type="file" id="bf" accept=".json" hidden><button class="btn" onclick="logout()">Log out</button></div></header>
 <main class="panel">
@@ -115,5 +118,5 @@ $('#bf').onchange=e=>{const f=e.target.files[0];e.target.value='';if(!f)return;c
 (async()=>{const m=await currentUser();
   if(!m)return location.replace('login.html');
   ME=m.user;if(ME.role!=='admin')return location.replace('index.html');load()})();
-</script><script src="chat.js" defer></script>
+</script><script src="chat.js" defer></script><script src="friends.js" defer></script><script src="posts.js" defer></script>
 </body></html>

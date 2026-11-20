@@ -36,6 +36,7 @@
   <header class="cw-head" id="cwHead" title="Drag to move · double-click to put it back">
     <div class="cw-title"><b id="cwTitle"># general</b><small id="cwSub">Connecting…</small></div>
     <button class="cw-ib" id="cwMem" type="button" aria-label="Who is online" aria-expanded="false" aria-controls="cwMembers" title="Who is online">👥</button>
+    <button class="cw-ib cw-frb" id="cwFrBtn" type="button" aria-label="Friends and private messages" title="Friends &amp; private messages">✉️<em class="cw-badge" id="cwFrB" hidden></em></button>
     <button class="cw-ib" id="cwMin" type="button" aria-label="Minimize chat" title="Minimize">—</button>
   </header>
   <nav class="cw-chans" id="cwChans" aria-label="Channels"></nav>
@@ -110,7 +111,10 @@
     const card = pv.firstChild; card.innerHTML = '';
     const pc = document.createElement('div'); pc.className = 'profcard'; pc.append(big);
     pc.insertAdjacentHTML('beforeend', `<b>${esc(d.name)}${d.mine ? ' <span class="cw-you">you</span>' : ''}</b><span class="sub">${RL[d.role] || ''}</span>${status}`);
-    card.append(pc); card.insertAdjacentHTML('beforeend', rows + '<button class="btn" type="button" data-x>Close</button>');
+    card.append(pc); card.insertAdjacentHTML('beforeend', rows);
+    if (window.__cwF && !d.mine && d.friend) card.append(window.__cwF.profileRow(d.id, d.friend, { reload: () => openProfile(id), close: closeProfile }));   // Add friend / Accept / Message ... (friends.js)
+    if (!d.hidden && window.__cwP) { const ph = document.createElement('div'); card.append(ph); window.__cwP.mount(ph, d.id, { focusReply: false }); }   // Threads-style posts (posts.js)
+    card.insertAdjacentHTML('beforeend', '<button class="btn" type="button" data-x>Close</button>');
     card.querySelector('[data-x]').onclick = closeProfile; card.querySelector('[data-x]').focus();
   }
   addEventListener('keydown', e => { if (e.key === 'Escape' && pv) { closeProfile(); e.stopPropagation(); } }, true);
@@ -189,7 +193,7 @@
     mem.innerHTML = h;
     mem.querySelectorAll('.cw-st').forEach(el => el.append(avatar(idx[el.dataset.i])));
   }
-  const renderAll = () => { renderPill(); renderHead(); renderChans(); renderTyping(); renderMembers(); };
+  const renderAll = () => { renderPill(); renderHead(); renderChans(); renderTyping(); renderMembers(); if (window.__cwF) window.__cwF.layout(); };
 
   /* ---------- window: open / minimize / position ---------- */
   function applyPos() {
@@ -249,7 +253,7 @@
   addEventListener('resize', applyPos);
 
   /* ---------- polling ---------- */
-  const delay = () => fails ? Math.min(30000, 4000 * 2 ** Math.min(fails, 3)) : document.hidden ? POLL.hidden : S.open ? (S.hot < HOT_MS ? POLL.hot : POLL.open) : POLL.minimized;
+  const delay = () => fails ? Math.min(30000, 4000 * 2 ** Math.min(fails, 3)) : document.hidden ? POLL.hidden : (S.open || (window.__cwF && window.__cwF.active())) ? (S.hot < HOT_MS ? POLL.hot : POLL.open) : POLL.minimized;
   function schedule(ms) { clearTimeout(timer); timer = setTimeout(poll, ms == null ? delay() : ms); }
   async function poll() {
     if (busy) return;
@@ -259,6 +263,7 @@
     const seen = Object.entries(S.seen).map(([k, v]) => k + ':' + v).join(',');
     if (seen) q.set('seen', seen);
     if (S.open && Date.now() - S.lastType < 5000) q.set('typing', S.ch);
+    const fx = window.__cwF && window.__cwF.params(); if (fx) for (const k in fx) q.set(k, fx[k]);   // private conversations that are open + what was read (friends.js)
     try { const d = await api('/api/chat?' + q); fails = 0; S.err = false; apply(d); }
     catch (e) { if (e.status === 401) return location.replace('login.html'); fails++; S.err = true; renderHead(); }
     finally { busy = false; schedule(); }
@@ -278,6 +283,7 @@
       if (c && S.seen[c.id] !== c.last) { S.seen[c.id] = c.last; }
     }
     LS.set('cw_seen', S.seen);
+    try { if (window.__cwF) window.__cwF.apply(d); } catch (e) { console.error(e); }   // friends + private messages ride on the same poll
     renderAll();
   }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { renderAll(); schedule(0); } });
@@ -383,6 +389,10 @@
     if (e.key !== 'Escape' || e.defaultPrevented) return;
     if (S.members) setMembers(false); else if (S.open) { setOpen(false); $('#cwPill').focus(); }
   });
+
+  /* ---------- hand-over to friends.js (friends list + private messages) ---------- */
+  window.__cwCore = { esc, hue, link, tf, df, dayLabel, LS, avatar, isMobile, openProfile, win, pill: $('#cwPill'),
+    refresh: ms => schedule(ms == null ? 0 : ms), hot: () => { S.hot = 0; }, closeWin: () => setOpen(false), openWin: () => setOpen(true, true), isOpen: () => S.open };
 
   /* ---------- go ---------- */
   win.hidden = !S.open; $('#cwPill').hidden = S.open;

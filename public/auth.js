@@ -11,8 +11,11 @@ applyTheme(localStorage.getItem('stb_theme')||'white');
 document.addEventListener('DOMContentLoaded',()=>applyTheme(localStorage.getItem('stb_theme')||'white'));
 
 async function api(path,method='GET',body){
-  const r=await fetch(path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,credentials:'same-origin'});
+  const h={'Content-Type':'application/json'},sv=localStorage.getItem('stb_sv');
+  if(sv&&sv!=='cepalco'&&!/^\/api\/(login|logout|servers)/.test(path))h['X-Server']=sv;   // active server (default CEPALCO sends nothing)
+  const r=await fetch(path,{method,headers:h,body:body?JSON.stringify(body):undefined,credentials:'same-origin'});
   let d={};try{d=await r.json()}catch(e){}
+  if(r.status===403&&/not a member of that server/i.test(d.error||'')){localStorage.removeItem('stb_sv');location.reload();throw new Error(d.error)}   // kicked / server deleted -> back to CEPALCO
   if(!r.ok){const e=new Error(d.error||('Server error '+r.status));e.status=r.status;throw e}
   return d;
 }

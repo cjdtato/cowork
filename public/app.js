@@ -417,7 +417,9 @@ function renderProf(){
     ?`🔒 You changed your photo recently. You can change it again on ${fmtDate(ME.avatarNext)} (${Math.ceil(left/864e5)} day${Math.ceil(left/864e5)===1?'':'s'} left).`
     :(ME.avatarAt?'You can change your photo now. After saving, it locks for 15 days.':'Add a photo. After saving, you can change it once every 15 days.');
 }
-function openProf(){$('#hideProf').checked=!!ME.profileHidden;newPic=null;$('#avFile').value='';renderProf();$('#prof').hidden=false}
+let myPosts=null;
+function openProf(){$('#hideProf').checked=!!ME.profileHidden;newPic=null;$('#avFile').value='';renderProf();$('#prof').hidden=false;
+  if(myPosts)myPosts.destroy();myPosts=window.__cwP?window.__cwP.mount($('#profPosts'),ME.id,{focusReply:false}):null}   // posts.js (Threads-style posts on your profile)
 $('#profBtn').onclick=openProf;
 $('#hideProf').onchange=async e=>{
   const want=e.target.checked;e.target.disabled=true;
@@ -448,6 +450,59 @@ $('#avSave').onclick=async()=>{
   }catch(x){toast('⚠️ '+x.message);if(x.status===429)api('/api/me').then(d=>{ME=d.user;renderProf()}).catch(()=>{});renderProf()}
 };
 
+/* ---------- notifications (Facebook-style bell) ---------- */
+let NOTIFS=[],nFilter='all',lastUnread=-1;
+const nIcon={assigned:'📌',done:'✅',all_done:'🎉',closed:'🔒',friend_req:'🤝',friend_ok:'🤝',post_like:'❤️',post_reply:'💬'};
+const nText=n=>{const b=`<b>${esc(n.byName||'Someone')}</b>`,t=`<b>${esc(n.title||'a task')}</b>`;
+  return n.type==='assigned'?`${b} assigned you a task: ${t}`
+    :n.type==='done'?`${b} marked ${t} as done`
+    :n.type==='all_done'?`Everyone finished ${t} (last: ${b})`
+    :n.type==='closed'?`${b} closed ${t} for everyone`
+    :n.type==='friend_req'?`${b} sent you a friend request`
+    :n.type==='friend_ok'?`${b} accepted your friend request`
+    :n.type==='post_like'?`${b} liked your post: ${t}`
+    :n.type==='post_reply'?`${b} replied to your post: ${t}`:`${b} updated ${t}`};
+const ago=ms=>{const s=Math.max(1,Math.floor((Date.now()-ms)/1000));if(s<60)return 'Just now';const m=Math.floor(s/60);if(m<60)return m+'m ago';const h=Math.floor(m/60);if(h<24)return h+'h ago';const d=Math.floor(h/24);return d<7?d+'d ago':new Date(ms).toLocaleDateString('en-PH',{month:'short',day:'numeric',timeZone:'Asia/Manila'})};
+function renderNotifs(){
+  const unread=NOTIFS.filter(n=>!n.read).length,bd=$('#nBadge');
+  bd.textContent=unread>9?'9+':unread;bd.hidden=!unread;
+  $('#bellBtn').setAttribute('aria-label',unread?`Notifications, ${unread} unread`:'Notifications');
+  const items=NOTIFS.filter(n=>nFilter==='all'||!n.read);
+  $('#nList').innerHTML=items.length?items.map(n=>`<li class="nitem${n.read?'':' unread'}" data-id="${esc(n.id)}" data-d="${esc(n.date||'')}" data-t="${esc(n.type)}"><span class="nic">${nIcon[n.type]||'🔔'}</span><div class="ntxt">${nText(n)}<small>${ago(n.t)}</small></div><span class="ndot"></span></li>`).join(''):`<li class="nempty">${nFilter==='all'?'No notifications yet':'No unread notifications'}</li>`;
+}
+async function loadNotifs(){
+  try{
+    const r=await api('/api/notifications');NOTIFS=r.items||[];
+    if(lastUnread>=0&&r.unread>lastUnread){const b=$('#bellBtn');b.classList.remove('ring');void b.offsetWidth;b.classList.add('ring')}
+    lastUnread=r.unread;renderNotifs();
+  }catch(e){if(e.status===401)location.replace('login.html')}
+}
+const markRead=async ids=>{
+  NOTIFS.forEach(n=>{if(!ids||ids.includes(n.id))n.read=true});lastUnread=NOTIFS.filter(n=>!n.read).length;renderNotifs();
+  try{await api('/api/notifications/read','POST',ids?{ids}:{})}catch(e){}
+};
+function toggleNotifs(open){
+  const p=$('#nPanel');p.hidden=!open;$('#bellBtn').setAttribute('aria-expanded',String(open));
+  if(open)loadNotifs();
+}
+$('#bellBtn').onclick=e=>{e.stopPropagation();toggleNotifs($('#nPanel').hidden)};
+document.addEventListener('click',e=>{if(!$('#nPanel').hidden&&!$('#notifWrap').contains(e.target))toggleNotifs(false)});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#nPanel').hidden)toggleNotifs(false)});
+$('#nMarkAll').onclick=()=>markRead(null);
+document.querySelectorAll('.ntab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.ntab').forEach(x=>x.classList.toggle('on',x===b));nFilter=b.dataset.f;renderNotifs()});
+$('#nList').onclick=async e=>{
+  const li=e.target.closest('.nitem');if(!li)return;
+  markRead([li.dataset.id]);toggleNotifs(false);
+  if(li.dataset.t==='friend_req'||li.dataset.t==='friend_ok'){if(window.__cwF)window.__cwF.openPanel(li.dataset.t==='friend_req'?'requests':'friends');return}   // friend notifications open the Friends panel
+  if(li.dataset.t==='post_like'||li.dataset.t==='post_reply'){openProf();return}   // post notifications open your profile (your posts)
+  const d=li.dataset.d;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(d)){   // jump to the task's date on the Shared calendar
+    if(mode!=='shared')setMode('shared');
+    await refreshShared();
+    const [y,m]=d.split('-').map(Number);vy=y;vm=m-1;renderCal();openBoard(d);
+  }
+};
+
 /* ---------- boot ---------- */
 (async()=>{
   const me=await currentUser();if(!me)return location.replace('login.html');
@@ -471,6 +526,7 @@ $('#avSave').onclick=async()=>{
   setMode(mode);
   if(ME.mustChange)openAcct(true);
   // keep Shared fresh: every 60s while visible, and when returning to the tab
-  setInterval(()=>{if(!document.hidden)refreshShared()},60000);
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshShared()});
+  loadNotifs();
+  setInterval(()=>{if(!document.hidden){refreshShared();loadNotifs()}},60000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden){refreshShared();loadNotifs()}});
 })();

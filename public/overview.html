@@ -4,6 +4,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400..700&family=Quicksand:wght@400..700&family=Architects+Daughter&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="chat.css">
+<link rel="stylesheet" href="friends.css">
+<link rel="stylesheet" href="posts.css">
 <style>
 .ctl{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--gap)}
 .ctl label{display:grid;gap:4px;font-size:.68rem;font-weight:800;text-transform:uppercase;opacity:.9}
@@ -31,6 +33,7 @@
 </style></head>
 <body class="th-white">
 <script src="auth.js"></script>
+<script src="servers.js" defer></script>
 <header class="panel top">
   <div class="brand"><h1>⭐ All Users' Notes</h1><p class="sub">Every user's personal notes (admin's included) and all shared tasks · read-only</p></div>
   <div class="toolbar">
@@ -177,5 +180,5 @@ $('#grp').onchange=render;
   catch(e){if(e.status===401)return location.replace('login.html');toast('⚠️ '+e.message);return}
   const t=todayStr().split('-').map(Number);vy=t[0];vm=t[1]-1;render();
 })();
-</script><script src="chat.js" defer></script>
+</script><script src="chat.js" defer></script><script src="friends.js" defer></script><script src="posts.js" defer></script>
 </body></html>
