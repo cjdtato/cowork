@@ -413,6 +413,7 @@ export default async (req) => {
     }
     const me = us.find(u => u.id === meG.id) || (isSuper && SV !== DEF_SV ? { ...meG, role: 'admin', hostIds: [], tagIds: [] } : null);   // platform admin inside a server he is not a member of: acts as Head, is not listed as a member
     if (!me) throw H('You are not a member of that server.', 403);
+    const svNameNow = async () => SV === DEF_SV ? SV_NAME : ((await srvList()).find(v => v.id === SV)?.name || '');   // which server a task notification came from
     const nameUs = us.concat(allUs.filter(g => !us.some(u => u.id === g.id)));   // server people first, then anyone else (old chat senders, friends)
 
     if (path === '/me' && m === 'GET') return J({ user: { ...pub(me, us), overview: me.id === DEFAULT_ADMIN && SV === DEF_SV, superAdmin: isSuper }, server: { id: SV, name: SV === DEF_SV ? SV_NAME : (await srvList()).find(v => v.id === SV)?.name }, board: await st.get('board:' + me.id, { type: 'json' }) });
@@ -764,7 +765,7 @@ export default async (req) => {
       const t = { id: 's_' + randomBytes(6).toString('hex'), ...f, pinned: !!body.pinned, status: 'active', color: pal[Math.floor(Math.random() * pal.length)],
         created: today(), createdBy: me.id, hostIds: me.role === 'host' ? [me.id] : hostsFor(ids, us), assignees: ids.map(id => ({ id, done: false, doneAt: null })) };
       await mutShared(st, sh => { sh.tasks.push(t); });
-      await notify(st, ids, { type: 'assigned', by: me.id, byName: me.name || me.username, taskId: t.id, title: t.title, date: t.date });
+      await notify(st, ids, { sv: SV, svName: await svNameNow(), type: 'assigned', by: me.id, byName: me.name || me.username, taskId: t.id, title: t.title, date: t.date });
       return J(taskDTO(t, me, us), 201);
     }
     const sm = path.match(/^\/shared\/([\w-]+)$/);
@@ -808,7 +809,7 @@ export default async (req) => {
         }
         return t;
       });
-      for (const e of ev) await notify(st, e.to, e.n);
+      if (ev.length) { const sn = await svNameNow(); for (const e of ev) await notify(st, e.to, { ...e.n, sv: SV, svName: sn }); }
       return out ? J(taskDTO(out, me, us)) : J({ ok: 1 });
     }
 

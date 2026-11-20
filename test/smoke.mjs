@@ -484,6 +484,23 @@ console.log('Server logo');
   check('logo: deleting the server removes its logo', (await SS('/servers/' + SID, 'DELETE')).status === 200 && (await pubGet(SID)).status === 404);
 }
 
+console.log('Notifications carry their server');
+{
+  const mk = await SS('/servers', 'POST', { name: 'Notif Crew' }), SID = mk.d.id, q = '#sv=' + SID;
+  const G = browser(); await G('/login', 'POST', { username: 'svguy', password: 'svguy-pass-1' });
+  const gid = (await N('/users')).d.users.find(u => u.username === 'svguy').id;
+  await SS('/users' + q, 'POST', { username: 'svguy', role: 'staff' });
+  await SS('/shared' + q, 'POST', { title: 'Server-tagged task', description: '', priority: 'Now', date: '2026-04-01', assignees: [gid] });
+  await N('/shared', 'POST', { title: 'CEPALCO-tagged task', description: '', priority: 'Now', date: '2026-04-02', assignees: [gid] });
+  const items = (await G('/notifications')).d.items;
+  const a = items.find(n => n.title === 'Server-tagged task'), b = items.find(n => n.title === 'CEPALCO-tagged task');
+  check('notif: task notification records which server it came from', a && a.sv === SID && a.svName === 'Notif Crew');
+  check('notif: CEPALCO tasks are tagged with the default server', b && b.sv === 'cepalco' && b.svName === 'CEPALCO Server');
+  await G('/friends/request', 'POST', { userId: staff2 });
+  const fr = (await SS('/notifications')).d.items.find(n => n.type === 'friend_req' && n.by === gid);
+  check('notif: friend requests are NOT tied to a server', fr && fr.sv === undefined && fr.svName === undefined);
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(failed ? `\n${failed} check(s) FAILED` : '\nAll checks passed');
 process.exit(failed ? 1 : 0);

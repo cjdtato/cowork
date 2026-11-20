@@ -383,30 +383,3 @@ body.login{display:flex;flex-direction:column;align-items:center;justify-content
 
 /* header children that span the full width (overview filters, user chips) */
 .top>.ctl,.top>.ulist,.top>.help{grid-column:1/-1}
-
-/* ===== Notification bell (left of the profile picture) ===== */
-.notifwrap{position:relative;display:inline-flex}
-.bell{position:relative;width:40px;height:40px;min-height:40px;border-radius:50%;padding:0;display:inline-grid;place-items:center;background:var(--soft);border:1px solid var(--bd);color:var(--ink)}
-.bell:hover{border-color:var(--acc)}
-.bell.ring svg{animation:ring .6s ease-in-out 2}
-@keyframes ring{0%,100%{transform:rotate(0)}20%{transform:rotate(14deg)}40%{transform:rotate(-12deg)}60%{transform:rotate(8deg)}80%{transform:rotate(-6deg)}}
-.nbadge{position:absolute;top:-5px;right:-5px;min-width:19px;height:19px;padding:0 5px;border-radius:99px;background:#e41e3f;color:#fff;font-size:.68rem;font-weight:800;display:grid;place-items:center;border:2px solid var(--panel);line-height:1}
-.npanel{position:absolute;top:calc(100% + 8px);right:0;z-index:45;width:360px;max-height:min(520px,75dvh);display:flex;flex-direction:column;background:var(--panel);color:var(--ink);border:1px solid var(--bd);border-radius:16px;box-shadow:var(--sh),0 12px 40px rgba(0,0,0,.18);animation:pop .15s ease-out;overflow:hidden}
-.npanel[hidden]{display:none}
-.nhead{display:flex;justify-content:space-between;align-items:center;padding:14px 16px 4px}
-.nhead h4{margin:0;font:700 1.25rem Fredoka,sans-serif}
-.nlink{background:none;border:0;color:var(--acc);font-weight:700;font-size:.78rem;cursor:pointer;min-height:32px}
-.ntabs{display:flex;gap:6px;padding:6px 12px}
-.ntab{min-height:32px;padding:0 14px;border-radius:99px;border:0;background:transparent;font-weight:700;font-size:.82rem;opacity:.7}
-.ntab.on{background:var(--soft);opacity:1;color:var(--acc)}
-.nlist{list-style:none;margin:0;padding:4px 8px 10px;overflow-y:auto;overscroll-behavior:contain}
-.nitem{display:flex;align-items:center;gap:12px;padding:10px 8px;border-radius:12px;cursor:pointer}
-.nitem:hover{background:var(--soft)}
-.nic{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-size:1.3rem;background:var(--soft);flex:none;border:1px solid var(--bd)}
-.ntxt{flex:1;min-width:0;font-size:.85rem;line-height:1.3}
-.ntxt small{display:block;margin-top:2px;font-size:.72rem;font-weight:700;opacity:.6}
-.nitem.unread .ntxt small{color:var(--acc);opacity:1}
-.ndot{width:12px;height:12px;border-radius:50%;background:var(--acc);flex:none;visibility:hidden}
-.nitem.unread .ndot{visibility:visible}
-.nempty{text-align:center;padding:28px 12px;opacity:.6;font-size:.85rem}
-@media (max-width:640px){.npanel{position:fixed;left:10px;right:10px;top:calc(64px + var(--safe-t));width:auto}}

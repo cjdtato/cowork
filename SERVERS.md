@@ -52,3 +52,8 @@ The default admin (`u_admin`) stays Head of **CEPALCO Server** exactly as before
 - Server Heads (and the platform admin) set it in the rail → ⓘ Server info → **Server logo**. One change per **15 days**, enforced by the API (429). First upload is free. CEPALCO's logo can be changed by its Head too.
 - Cheap on Netlify: the browser shrinks the picture to a 96×96 WebP (≈2–6 KB, hard cap 24 KB) before upload; `GET /api/server-logo/<id>?v=<logoAt>` is public (no session/user reads, one tiny blob read) and sent with `Cache-Control: public, max-age=31536000, immutable` + `Netlify-CDN-Cache-Control … durable`, so each logo is fetched once per change. `logoAt` rides along in the `/servers` list that is already loaded (no extra requests); CEPALCO uses one small `svmeta:cepalco` blob.
 - API: `POST /servers/<id|cepalco>/logo {image: dataURL}` → `{logoAt, logoNext}`. Logo blob key `svlogo:<id>`; deleted with the server.
+
+## Notifications live in the server menu (v2.10)
+- The 🔔 button moved from the page header into the server rail (`servers.js`, so it works on every page, with an unread badge). The panel opens next to the rail (bottom sheet on phones).
+- Task notifications (`assigned`, `done`, `all_done`, `closed`) carry `sv` + `svName` and show **(Server name)** after the text (current name from the server list, falling back to the saved one). Friend requests/accepts, post likes and thread replies are global and show **no** server label.
+- Clicking: task → switches to that server's Shared calendar and opens the task's date (`sessionStorage.stb_open`); friend → Friends panel; post → your profile.
