@@ -13,16 +13,21 @@
   <input id="p" type="password" placeholder="Password" autocomplete="current-password" required>
   <div id="err" class="bad" style="font-size:.78rem;font-weight:700;min-height:1.2em"></div>
   <button class="btn pri big" type="submit">Log in</button>
-  <div class="foot">Version 2.12</div>
+  <div class="foot">Version 2.13</div>
+  <div style="text-align:center;margin-top:8px"><a href="#" id="tg" style="font-size:.8rem;font-weight:700">Have an invite code? Sign up</a></div>
 </form>
 <script>
 (async()=>{
   if(await currentUser())return location.replace('cross.html');
-  const btn=document.querySelector('button'),err=document.getElementById('err');
+  const btn=document.querySelector('button[type=submit]'),err=document.getElementById('err');
+  let su=false;const U=document.getElementById('u'),P=document.getElementById('p');
+  const nm=document.createElement('input');nm.placeholder='Display name';nm.hidden=true;nm.maxLength=60;U.before(nm);
+  const cd=document.createElement('input');cd.placeholder='Invite code (8 characters)';cd.hidden=true;cd.maxLength=12;cd.autocapitalize='characters';U.before(cd);
+  document.getElementById('tg').onclick=e=>{e.preventDefault();su=!su;nm.hidden=cd.hidden=!su;P.autocomplete=su?'new-password':'current-password';btn.textContent=su?'Sign up':'Log in';e.target.textContent=su?'Back to log in':'Have an invite code? Sign up';err.textContent=''};
   document.getElementById('f').onsubmit=async e=>{
-    e.preventDefault();btn.disabled=true;btn.textContent='Logging in…';err.textContent='';
-    try{await login(document.getElementById('u').value,document.getElementById('p').value);location.href='cross.html'}
-    catch(x){err.textContent=x.status?x.message:'Cannot reach the server. Check your connection.';btn.disabled=false;btn.textContent='Log in'}
+    e.preventDefault();btn.disabled=true;btn.textContent=su?'Signing up…':'Logging in…';err.textContent='';
+    try{if(su){sessionStorage.removeItem('stb_svl');await api('/api/signup','POST',{code:cd.value,name:nm.value,username:U.value,password:P.value})}else await login(U.value,P.value);location.href='cross.html'}
+    catch(x){err.textContent=x.status?x.message:'Cannot reach the server. Check your connection.';btn.disabled=false;btn.textContent=su?'Sign up':'Log in'}
   };
 })();
 </script></body></html>

@@ -72,3 +72,7 @@ The default admin (`u_admin`) stays Head of **CEPALCO Server** exactly as before
 - Account CRUD (add / edit name, active, temp password / delete) and Backup export/import now live in `admin-accounts.html` (Admin → 👥 Accounts & backup), platform admin only, **not tied to any server**. Table shows each account's servers.
 - API (platform admin only): `GET/POST /admin/accounts` · `PUT/DELETE /admin/accounts/<id>`. Old `POST /users`, `DELETE /users/<id>`, `/backup` on CEPALCO now return 403 for non-platform-admins.
 - CEPALCO's Manage Users page keeps positions, supervisors and custom roles only (no create/delete/backup).
+
+## CEPALCO invite code (v2.13.1)
+- Stored in `svmeta:cepalco` (`code`). `POST /servers/cepalco/invite` = create/renew, `DELETE` = turn off (Head or platform admin). `/servers` returns `code` for Heads only.
+- Public `POST /signup {code, username, name, password}` creates a Staff account (password chosen by the person) and logs them in. 5 wrong codes per IP → 15 min lock.

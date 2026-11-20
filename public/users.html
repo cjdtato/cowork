@@ -16,7 +16,9 @@ th{font-size:.65rem;text-transform:uppercase;opacity:.6}.fm{display:grid;grid-te
 #tm{border:1px dashed var(--bd);border-radius:12px;padding:10px 12px;margin:8px 0 14px;background:var(--soft)}
 .top .row .btn{flex:1 1 auto}
 @media(max-width:700px){.top .row{display:grid;grid-template-columns:1fr 1fr}.top .row .btn:first-child{grid-column:1/-1}.fm{grid-template-columns:1fr}table{font-size:.75rem}td:last-child .mini{margin:2px 0}}body.noacct #bx,body.noacct #bi,body.noacct [data-d]{display:none!important}
-body.noacct:not(.editing) #f,body.noacct:not(.editing) #ft{display:none}</style></head>
+main.panel{padding-bottom:84px}
+.fm label{display:inline-flex;align-items:center;gap:6px}
+.tag{white-space:nowrap}th,td{vertical-align:top}table{min-width:560px}</style></head>
 <body class="th-white">
 <script src="auth.js"></script>
 <script src="servers.js" defer></script>
@@ -29,8 +31,8 @@ body.noacct:not(.editing) #f,body.noacct:not(.editing) #ft{display:none}</style>
   <form id="rf" class="row" style="margin:8px 0"><input id="rn" placeholder="New role name, e.g. DSD" maxlength="30" style="flex:1 1 180px"><button class="btn pri" type="submit">＋ Create role</button></form>
   <div class="rl" id="rl"></div>
   <div id="tm" hidden><div class="sub" style="margin-bottom:6px"><b id="tmt"></b></div><div class="people" id="tmp"></div><div class="row" style="margin:0"><button class="btn pri" type="button" id="tms">💾 Save members</button><button class="btn" type="button" id="tmc">Cancel</button></div></div>
-  <h3 id="ft">Add user</h3>
-  <form id="f" class="fm" style="margin:10px 0 16px">
+  <h3 id="ft">Add member (existing account)</h3>
+  <form id="f" class="fm" novalidate style="margin:10px 0 16px">
     <input id="fu" placeholder="Username" required pattern="[A-Za-z0-9_.\-]{3,30}" title="3–30 letters, numbers, . _ -" autocapitalize="none">
     <input id="fn" placeholder="Display name">
     <input id="fp" type="password" placeholder="Temporary password" autocomplete="new-password">
@@ -73,7 +75,7 @@ function render(){
   <td style="white-space:nowrap"><button class="mini" data-e="${u.id}">✏️ Edit</button> <button class="mini" data-d="${u.id}">🗑 Delete</button></td></tr>`).join('');
   hostBoxes(editId?(US.find(u=>u.id===editId)||{hostIds:[]}).hostIds:[]);tagBoxes(keep);syncRole();
 }
-function reset(){document.body.classList.remove('editing');editId=null;$('#f').reset();$('#fa').checked=true;$('#fu').disabled=false;$('#fp').required=true;$('#fp').placeholder='Temporary password';$('#ft').textContent='Add user';$('#fs').textContent='＋ Add';$('#fc').hidden=true;render()}
+function reset(){document.body.classList.remove('editing');editId=null;$('#f').reset();$('#fa').checked=true;$('#fu').disabled=false;$('#fp').required=true;$('#fp').placeholder='Temporary password';$('#ft').textContent='Add member (existing account)';$('#fs').textContent='＋ Add';$('#fc').hidden=true;render()}
 $('#fc').onclick=reset;
 $('#tb').onclick=async e=>{
   const eb=e.target.closest('[data-e]'),db=e.target.closest('[data-d]');
@@ -85,13 +87,13 @@ $('#tb').onclick=async e=>{
     try{await api('/api/users/'+u.id,'DELETE');toast('User deleted');load()}catch(x){fail(x)}}
 };
 $('#f').onsubmit=async e=>{
-  e.preventDefault();const pw=$('#fp').value;
+  e.preventDefault();if(!editId&&!$('#fu').value.trim())return toast('Enter the username of an existing account.');const pw=$('#fp').value;
   if(pw&&pw.length<6)return toast('Password must be at least 6 characters.');
   const b={name:$('#fn').value,role:$('#fr').value,active:$('#fa').checked,hostIds:[...$('#fh').querySelectorAll('input:checked')].map(i=>i.value),tagIds:[...$('#ftg').querySelectorAll('input:checked')].map(i=>i.value)};
   try{
     if(editId){if(pw)b.password=pw;await api('/api/users/'+editId,'PUT',b);toast('User updated')}
     else{b.username=$('#fu').value;b.password=pw;await api('/api/users','POST',b);toast('User added')}
-    document.body.classList.remove('editing');editId=null;$('#f').reset();$('#fa').checked=true;$('#fu').disabled=false;$('#fp').required=true;$('#fp').placeholder='Temporary password';$('#ft').textContent='Add user';$('#fs').textContent='＋ Add';$('#fc').hidden=true;load();
+    document.body.classList.remove('editing');editId=null;$('#f').reset();$('#fa').checked=true;$('#fu').disabled=false;$('#fp').required=true;$('#fp').placeholder='Temporary password';$('#ft').textContent='Add member (existing account)';$('#fs').textContent='＋ Add';$('#fc').hidden=true;load();
   }catch(x){fail(x)}
 };
 $('#rf').onsubmit=async e=>{e.preventDefault();const n=$('#rn').value.trim();if(!n)return;

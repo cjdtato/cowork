@@ -40,7 +40,7 @@ body.hasrail{padding-left:72px}
 .svi.fr.on i{background:var(--pri,#6366f1);color:var(--pi,#fff)}
 #svTab{display:none}
 @media(max-width:700px){
- body.hasrail{padding-left:0}
+ body.hasrail{padding-left:22px}
  #svRail{width:248px;transform:translateX(-100%);transition:transform .18s}
  #svRail.open{transform:none}
  #svTab{font-family:Quicksand,system-ui,sans-serif;display:grid;position:fixed;left:0;top:50%;z-index:59;width:26px;height:56px;place-items:center;border:1px solid var(--bd,#ddd);border-left:0;border-radius:0 12px 12px 0;background:var(--panel,#fff);color:var(--ink,#111);cursor:pointer;box-shadow:var(--sh,none)}
@@ -118,7 +118,7 @@ function infoDlg(){
   const s=LIST.find(x=>x.id===cur())||LIST[0],isH=s.role==='admin',def=s.id===DEF;
   const d=dlg(`<h3>${esc(s.name)}</h3><p>Created by <b>${esc(s.createdBy)}</b> · ${s.members} member${s.members===1?'':'s'} · your position: <b>${ROLE[s.role]||s.role}</b></p>
   ${def?'<p>Positions (Head / Supervisor / Staff) and custom roles (e.g. COLLECTION, BILLING) belong to this server.</p>':''}
-  ${s.code?`<label>Invite code (people join as Staff)</label><div class="code">${esc(s.code)}</div><div class="r"><button class="btn" id="svCp">Copy</button><button class="btn" id="svRs">New code</button></div>`:''}
+  ${s.code?`<label>Invite code (people join as Staff)</label><div class="code">${esc(s.code)}</div><div class="r"><button class="btn" id="svCp">Copy</button><button class="btn" id="svRs">New code</button>${def?'<button class="btn" id="svOff">Turn off</button>':''}</div>${def?'<p style="font-size:.75rem;opacity:.75">New people sign up on the login page with this code.</p>':''}`:(def&&isH?'<label>Invite code</label><p style="font-size:.78rem;opacity:.8">No code yet — create one so new people can sign up on the login page.</p><div class="r"><button class="btn pri" id="svRs">Create invite code</button></div>':'')}
   ${isH?`<label>Server logo <span style="opacity:.7">(one change every ${LOGO_DAYS} days)</span></label><div class="r" style="align-items:center;flex-wrap:nowrap"><span class="lgp" id="svLg" style="${sbg(s)}">${sini(s)}${limg(s)}</span><button class="btn" id="svLp" type="button">Choose image</button><button class="btn pri" id="svLs" type="button" disabled>Save logo</button></div><input type="file" id="svLf" accept="image/jpeg,image/png,image/webp" hidden><p id="svLn"></p>`:''}
   ${!def&&isH?`<label>Rename server</label><input id="svRn" value="${esc(s.name)}" maxlength="30"><div class="r"><button class="btn" id="svRb">Save name</button></div>`:''}
   ${isH?'<div class="r"><a class="btn" href="users.html">Manage people &amp; roles</a></div>':''}
@@ -136,7 +136,8 @@ function infoDlg(){
     $('#svLs').onclick=()=>pic&&act(d,async()=>{$('#svLs').disabled=true;try{await api('/api/servers/'+s.id+'/logo','POST',{image:pic});location.reload()}catch(x){$('#svLs').disabled=false;throw x}});
   }
   if($('#svCp'))$('#svCp').onclick=()=>navigator.clipboard&&navigator.clipboard.writeText(s.code).then(()=>{$('#svCp').textContent='Copied ✓'});
-  if($('#svRs'))$('#svRs').onclick=()=>act(d,async()=>{const r=await api('/api/servers/'+s.id+'/invite','POST',{});s.code=r.code;infoDlg()});
+  if($('#svRs'))$('#svRs').onclick=()=>act(d,async()=>{const r=await api('/api/servers/'+(def?'cepalco':s.id)+'/invite','POST',{});s.code=r.code;infoDlg()});
+  if($('#svOff'))$('#svOff').onclick=()=>{if(!confirm('Turn off the invite code? Nobody can sign up with it until you create a new one.'))return;act(d,async()=>{await api('/api/servers/cepalco/invite','DELETE');s.code='';infoDlg()})};
   if($('#svRb'))$('#svRb').onclick=()=>act(d,async()=>{await api('/api/servers/'+s.id,'PUT',{name:$('#svRn').value});location.reload()});
   if($('#svL'))$('#svL').onclick=()=>confirm('Leave "'+s.name+'"?')&&act(d,async()=>{await api('/api/servers/'+s.id+'/leave','POST',{});go(DEF)});
   if($('#svD'))$('#svD').onclick=()=>confirm('Delete "'+s.name+'" with its chat, roles and shared tasks? This cannot be undone.')&&act(d,async()=>{await api('/api/servers/'+s.id,'DELETE');go(DEF)});
@@ -252,8 +253,8 @@ function build(){
   document.addEventListener('click',e=>{if(!r.contains(e.target))r.classList.remove('open')});
   if(cs&&cs.id!==DEF)document.title=cs.name+' · '+document.title;
   // Users page inside a user-made server: people are existing accounts (added by username), not new accounts
-  if(cur()!==DEF&&/users\.html$/.test(location.pathname)){
-    const hide=['#fn','#fp','#fa'];hide.forEach(q=>{const e=document.querySelector(q);if(e)(e.closest('label')||e).hidden=true});
+  if(/users\.html$/.test(location.pathname)){
+    const st=document.createElement('style');st.textContent='.pwx:has(#fp){display:none!important}';document.head.append(st);const hide=['#fn','#fp','#fa'];hide.forEach(q=>{const e=document.querySelector(q);if(e)(e.closest('label')||e).hidden=true});
     const h=document.querySelector('#ft');if(h)h.textContent='Add member (existing account)';
     const fu=document.querySelector('#fu');if(fu)fu.placeholder='Username of an existing account';
   }
