@@ -99,16 +99,16 @@ let vy=t0[0],vm=t0[1]-1,openDate=null,src='all',D={servers:[],personal:[],shared
 
 // one list for everything: {src, srcName, id, title, description, date, color, priority, done, ...}
 function build(){
-  const P=D.personal.map(t=>({src:'personal',srcName:'Personal',id:t.id,title:t.title,description:t.description||'',date:t.date,color:t.color,priority:t.priority||'Next',done:t.status==='done',pinned:!!t.pinned}));
+  const P=D.personal.map(t=>({src:t.serverId,kind:'personal',srcName:t.serverName,id:t.id,title:t.title,description:t.description||'',date:t.date,color:t.color,priority:t.priority||'Next',done:t.status==='done',pinned:!!t.pinned}));
   const S=D.shared.map(t=>({src:t.serverId,srcName:t.serverName,id:t.id,title:t.title,description:t.description||'',date:t.date,color:t.color,priority:t.priority||'Next',done:!!t.myDone,by:t.createdByName,pinned:!!t.pinned,shared:true}));
   ALL=P.concat(S).filter(t=>/^\d{4}-\d{2}-\d{2}$/.test(t.date||''));
 }
-const view=()=>ALL.filter(t=>src==='all'||t.src===src);
+const view=()=>ALL.filter(t=>src==='all'||t.src===src||(src==='personal'&&t.kind==='personal'));
 const sort=l=>l.slice().sort((a,b)=>(a.done-b.done)||((b.pinned?1:0)-(a.pinned?1:0))||((PRI[a.priority]||0)-(PRI[b.priority]||0)));
 
 function renderFil(){
-  const cnt=id=>ALL.filter(t=>!t.done&&(id==='all'||t.src===id)).length;
-  const opt=[['all','All','#888'],['personal','👤 Personal','#6366f1'],...D.servers.map(s=>[s.id,s.name,svColor(s.id)])];
+  const cnt=id=>ALL.filter(t=>!t.done&&(id==='all'||t.src===id||(id==='personal'&&t.kind==='personal'))).length;
+  const opt=[['all','All','#888'],['personal','👤 All personal','#6366f1'],...D.servers.map(s=>[s.id,s.name,svColor(s.id)])];
   $('#xFil').innerHTML=opt.map(([id,n,c])=>`<button class="xf" data-s="${esc(id)}" aria-pressed="${id===src}"><i style="background:${c}"></i>${esc(n)} <em>${cnt(id)}</em></button>`).join('');
 }
 $('#xFil').onclick=e=>{const b=e.target.closest('.xf');if(!b)return;src=b.dataset.s;renderAll()};
@@ -149,13 +149,13 @@ function renderBoard(){
   $('#bTitle').textContent=new Date(openDate+'T00:00:00').toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
   const L=sort(view().filter(t=>t.date===openDate));
   $('#bBody').innerHTML=L.length?L.map((t,i)=>`<div class="xrow${t.done?' dn':''}" style="--sv:${svColor(t.src)}">
-    <div class="xb"><span class="xtag">${t.src==='personal'?'👤 Personal':esc(t.srcName)}</span>
+    <div class="xb"><span class="xtag">${t.kind==='personal'?'👤 Personal · ':''}${esc(t.srcName)}</span>
       <div class="xt">${t.done?'✔ ':''}${esc(t.title)}</div>
       ${t.description?`<div class="xd">${esc(t.description)}</div>`:''}
       <div class="xd">${esc(t.priority)}${t.by?' · from '+esc(t.by):''}</div>
       <div class="xact">
         ${t.shared&&!t.done?`<button class="btn pri" data-a="done" data-i="${i}">✔ Mark my part done</button>`:''}
-        <button class="btn" data-a="open" data-i="${i}">${t.src==='personal'?'Open in Personal':'Open in '+esc(t.srcName)} ↗</button>
+        <button class="btn" data-a="open" data-i="${i}">${t.kind==='personal'?'Open my notes in ':'Open in '}${esc(t.srcName)} ↗</button>
       </div></div></div>`).join(''):'<div class="xempty">Nothing on this date 🎉</div>';
   $('#bBody')._L=L;
 }
@@ -163,8 +163,7 @@ $('#bBody').onclick=async e=>{
   const b=e.target.closest('button[data-a]');if(!b)return;
   const t=$('#bBody')._L[+b.dataset.i];if(!t)return;
   if(b.dataset.a==='open'){   // jump into that server (or Personal) on the normal calendar
-    if(t.src==='personal')localStorage.setItem('stb_mode','personal');
-    else{t.src==='cepalco'?localStorage.removeItem('stb_sv'):localStorage.setItem('stb_sv',t.src);localStorage.setItem('stb_mode','shared')}
+    t.src==='cepalco'?localStorage.removeItem('stb_sv'):localStorage.setItem('stb_sv',t.src);localStorage.setItem('stb_mode',t.kind==='personal'?'personal':'shared');
     return location.assign('index.html');
   }
   if(b.dataset.a==='done'){

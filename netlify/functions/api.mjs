@@ -8,7 +8,7 @@ const H = (m, s = 400) => new HttpError(s, m);
 
 const base = () => getStore({ name: 'taskboard', consistency: 'strong' });
 // SERVERS: keys shared / tags / chat:* live in a per-server namespace (sv:<id>:<key>); the default 'cepalco' server keeps the original un-prefixed keys. Everything else (users, boards, friends, DMs, posts, notifications, sessions) is global.
-const SCOPED = /^(shared|tags|chat:)/;
+const SCOPED = /^(shared|tags|chat:|board:)/;   // board:<uid> = that person's PERSONAL notes, kept inside each server (CEPALCO keeps the original un-prefixed keys)
 const DEF_SV = 'cepalco', SV_ID = /^s_[a-f0-9]{8}$/, MAX_OWN = 5, MAX_MEM = 100, SV_NAME = 'CEPALCO Server';
 const svKey = (id, k) => id !== DEF_SV && SCOPED.test(k) ? `sv:${id}:${k}` : k;
 const scoped = (b, cur) => ({ get: (k, o) => b.get(svKey(cur(), k), o), getWithMetadata: (k, o) => b.getWithMetadata(svKey(cur(), k), o), setJSON: (k, d, o) => b.setJSON(svKey(cur(), k), d, o), delete: k => b.delete(svKey(cur(), k)) });
@@ -356,6 +356,7 @@ export default async (req) => {
         });
         const chans = (await bs.get(svKey(sid, 'chat:channels'), { type: 'json' })) || [];
         for (const k of ['shared', 'tags', 'chat:channels', 'chat:general', ...chans.map(c => 'chat:' + c.id)]) await bs.delete(svKey(sid, k));
+        for (const uid of Object.keys(gone?.members || {})) await bs.delete(svKey(sid, 'board:' + uid));
         await bs.delete('svlogo:' + sid);
         return J({ ok: 1 });
       }
@@ -386,6 +387,16 @@ export default async (req) => {
         const out = await mutSrv(list => { const x = { id: 's_' + randomBytes(4).toString('hex'), name, ownerId: own.id, created: today(), code: newCode(), members: { [own.id]: { role: 'admin', hostIds: [], tagIds: [] } } }; list.push(x); return x; });
         return J({ id: out.id, name: out.name, code: out.code }, 201);
       }
+      if (path === '/admin/notes' && m === 'GET') {   // every account's personal notes + every server's shared tasks, tagged by server (read-only)
+        const list = await srvList();
+        const svs = [{ id: DEF_SV, name: SV_NAME, members: allUs.filter(u => u.active).map(u => u.id) }, ...list.map(x => ({ id: x.id, name: x.name, members: Object.keys(x.members || {}) }))];
+        const users = allUs.map(u => ({ id: u.id, name: u.name || u.username, username: u.username, role: u.role, active: u.active, servers: svs.filter(v => v.members.includes(u.id)).map(v => v.id) }));
+        const tasks = [], shared = [];
+        for (const v of svs) {
+          for (const uid of v.members) { const b = await bs.get(svKey(v.id, 'board:' + uid), { type: 'json' }); for (const t of (b?.tasks || [])) tasks.push({ ...t, userId: uid, serverId: v.id, serverName: v.name }); }   // personal notes stay in the server they were written in
+ const sh = (await bs.get(svKey(v.id, 'shared'), { type: 'json' })) || { tasks: [] }; for (const t of sh.tasks) shared.push({ ...taskDTO(t, meG, allUs), serverId: v.id, serverName: v.name }); }
+        return J({ servers: svs.map(v => ({ id: v.id, name: v.name })), users, tasks, shared });
+      }
       const ao = path.match(/^\/admin\/servers\/(s_[a-f0-9]{8})\/owner$/);
       if (ao && m === 'PUT') {   // hand a server to another account (made Head if needed)
         const acc = allUs.find(u => u.id === body.userId && u.active);
@@ -404,7 +415,7 @@ export default async (req) => {
     if (path === '/cross' && m === 'GET') {
       const list = await srvList();
       const svs = [{ id: DEF_SV, name: SV_NAME }, ...list.filter(x => x.members[meG.id]).map(x => ({ id: x.id, name: x.name }))];
-      const tasks = [];
+      const tasks = [], personal = [];
       for (const sv of svs) {
         let usS = allUs, meS = meG;
         if (sv.id !== DEF_SV) {
@@ -413,14 +424,15 @@ export default async (req) => {
           meS = usS.find(u => u.id === meG.id);
           if (!meS) continue;
         }
+        const pb = (await bs.get(svKey(sv.id, 'board:' + meG.id), { type: 'json' })) || { tasks: [] };   // my personal notes of THIS server
+        for (const t of (pb.tasks || [])) if (t.status !== 'trash') personal.push({ ...t, serverId: sv.id, serverName: sv.name });
         const sh = (await bs.get(svKey(sv.id, 'shared'), { type: 'json' })) || { tasks: [] };
         for (const t of sh.tasks) {
           if (t.status !== 'active' || !isMine(meS, t)) continue;   // only tasks given to me
           tasks.push({ ...taskDTO(t, meS, allUs), serverId: sv.id, serverName: sv.name });
         }
       }
-      const b = (await bs.get('board:' + meG.id, { type: 'json' })) || { tasks: [] };
-      return J({ servers: svs, personal: (b.tasks || []).filter(t => t.status !== 'trash'), shared: tasks });
+      return J({ servers: svs, personal, shared: tasks });
     }
 
     // ----- pick the active server: X-Server header (default = CEPALCO). 'us' = the people of THIS server with their server position/roles -----
@@ -437,7 +449,13 @@ export default async (req) => {
     const svNameNow = async () => SV === DEF_SV ? SV_NAME : ((await srvList()).find(v => v.id === SV)?.name || '');   // which server a task notification came from
     const nameUs = us.concat(allUs.filter(g => !us.some(u => u.id === g.id)));   // server people first, then anyone else (old chat senders, friends)
 
-    if (path === '/me' && m === 'GET') return J({ user: { ...pub(me, us), overview: me.id === DEFAULT_ADMIN && SV === DEF_SV, superAdmin: isSuper }, server: { id: SV, name: SV === DEF_SV ? SV_NAME : (await srvList()).find(v => v.id === SV)?.name }, board: await st.get('board:' + me.id, { type: 'json' }) });
+    const myBoard = async () => {   // personal notes of THIS server; the theme is global (kept in the default board)
+      const b = await st.get('board:' + me.id, { type: 'json' });
+      if (SV === DEF_SV) return b;
+      const th = (await bs.get('board:' + me.id, { type: 'json' }))?.theme;
+      return { tasks: [], rev: 0, ...(b || {}), ...(th ? { theme: th } : {}) };
+    };
+    if (path === '/me' && m === 'GET') return J({ user: { ...pub(me, us), overview: me.id === DEFAULT_ADMIN && SV === DEF_SV, superAdmin: isSuper }, server: { id: SV, name: SV === DEF_SV ? SV_NAME : (await srvList()).find(v => v.id === SV)?.name }, board: await myBoard() });
 
     if (path === '/change-password' && m === 'POST') {
       const cur = String(body.currentPassword || ''), next = String(body.newPassword || '');
@@ -762,13 +780,14 @@ export default async (req) => {
       if (Number.isInteger(body.rev) && body.rev !== curRev) throw stale();
       const w = await st.setJSON(key, { ...cleanBoard(body), rev: curRev + 1 }, cur ? { onlyIfMatch: cur.etag } : { onlyIfNew: true });
       if (w && w.modified === false) throw stale();
+      if (SV !== DEF_SV && THEMES.includes(body.theme)) await mutate(bs, 'board:' + me.id, () => ({ tasks: [], rev: 0 }), d => { d.theme = body.theme; });
       return J({ ok: 1, rev: curRev + 1 });
     }
 
     if (path === '/theme' && m === 'POST') {   // theme picked from the server menu on any page (does not bump the board revision)
       const t = String(body.theme || '');
       if (!THEMES.includes(t)) throw H('Unknown theme');
-      await mutate(st, 'board:' + me.id, () => ({ tasks: [], rev: 0 }), d => { d.theme = t; });
+      await mutate(bs, 'board:' + me.id, () => ({ tasks: [], rev: 0 }), d => { d.theme = t; });   // global: always the default board
       return J({ ok: 1 });
     }
 
@@ -966,7 +985,7 @@ export default async (req) => {
           list.splice(i, 1);
           list.forEach(u => { u.hostIds = u.hostIds.filter(h => h !== id); });
         });
-        await st.delete('board:' + id);
+        for (const x of [{ id: DEF_SV }, ...(await srvList())]) await bs.delete(svKey(x.id, 'board:' + id));   // personal notes in every server
         await st.delete('avatar:' + id);
         await st.delete('pres:' + id);
         await st.delete('posts:' + id);

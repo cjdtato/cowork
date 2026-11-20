@@ -369,6 +369,12 @@ check('posts: deleting an account removes its profile', await (async () => {
   return (await N('/users/' + P3id, 'DELETE')).status === 200 && (await SS('/posts/' + P3id)).status === 404;
 })());
 
+console.log('Admin: notes across servers');
+{
+  const r = await N('/admin/notes');
+  check('admin notes: default admin gets every server + user + personal notes', r.status === 200 && r.d.servers[0].id === 'cepalco' && Array.isArray(r.d.users) && Array.isArray(r.d.tasks) && Array.isArray(r.d.shared) && r.d.users.every(u => Array.isArray(u.servers)));
+  check('admin notes: other users are refused', (await SS('/admin/notes')).status === 403);
+}
 console.log('Servers');
 {
   const d0 = (await N('/servers')).d.servers;
@@ -452,7 +458,11 @@ console.log('Cross-server calendar');
   check('cross: lists CEPALCO + each server I belong to', c.status === 200 && c.d.servers.some(x => x.id === 'cepalco') && c.d.servers.some(x => x.id === SID));
   check('cross: includes tasks assigned to me from every server, tagged with the server', c.d.shared.some(t => t.title === 'Cross-server task' && t.serverId === SID && t.serverName === 'Cross Crew') && c.d.shared.some(t => t.title === 'CEPALCO task for svguy' && t.serverId === 'cepalco'));
   check('cross: does NOT include tasks assigned to someone else', !c.d.shared.some(t => t.title === 'Not for svguy'));
-  check('cross: includes my personal notes', c.d.personal.some(t => t.title === 'My private note'));
+  check('cross: includes my personal notes, tagged with the server they live in', c.d.personal.some(t => t.title === 'My private note' && t.serverId === 'cepalco'));
+  await G('/board' + q, 'PUT', { tasks: [{ id: 'p2', title: 'Note in Cross Crew', date: '2026-03-07', priority: 'Next', status: 'active', color: '#fff3a1' }], rev: 0, theme: 'white' });
+  const c2 = (await G('/cross')).d;
+  check('personal notes stay in their own server (CEPALCO board unchanged, server board separate)', c2.personal.some(t => t.title === 'Note in Cross Crew' && t.serverId === SID) && !c2.personal.some(t => t.title === 'My private note' && t.serverId === SID) && (await G('/me')).d.board.tasks.every(t => t.title !== 'Note in Cross Crew') && (await G('/me' + q)).d.board.tasks.map(t => t.title).join() === 'Note in Cross Crew');
+  check('theme stays global across servers', (await G('/me' + q)).d.board.theme === 'white');
   check('cross: ignores the X-Server header (always all servers)', (await G('/cross#sv=' + SID)).d.shared.length === c.d.shared.length);
   const X = browser(); await X('/login', 'POST', { username: 'sup1', password: 'sup-pass-12' });
   const xc = (await X('/cross')).d;

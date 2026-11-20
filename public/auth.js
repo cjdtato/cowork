@@ -50,3 +50,19 @@ addEventListener('pageshow',async e=>{
   if(!e.persisted||/login\.html$/.test(location.pathname))return;
   if(!(await api('/api/me').catch(()=>null)))location.replace('login.html');
 });
+
+/* Show/hide toggle (👁) on every password field: works on login, change-password and the admin Users page. */
+(function(){
+  const css=document.createElement('style');
+  css.textContent='.pwx{position:relative;display:block;width:100%}.pwx>input{width:100%;padding-right:44px!important;box-sizing:border-box}.pwx>button{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:36px;height:36px;border:0;border-radius:10px;background:transparent;color:inherit;font-size:1.05rem;cursor:pointer;opacity:.65;padding:0;line-height:1}.pwx>button:hover,.pwx>button:focus-visible{opacity:1;background:rgba(127,127,127,.18)}';
+  document.head.append(css);
+  const wrap=i=>{
+    if(i.dataset.pwx||i.type!=='password')return;i.dataset.pwx=1;
+    const w=document.createElement('span');w.className='pwx';i.replaceWith(w);w.append(i);
+    const b=document.createElement('button');b.type='button';b.textContent='👁';b.title='Show password';b.setAttribute('aria-label','Show password');b.setAttribute('aria-pressed','false');
+    b.onclick=()=>{const on=i.type==='password';i.type=on?'text':'password';b.textContent=on?'🙈':'👁';b.title=on?'Hide password':'Show password';b.setAttribute('aria-label',b.title);b.setAttribute('aria-pressed',String(on))};
+    w.append(b);
+  };
+  const run=()=>document.querySelectorAll('input[type=password]').forEach(wrap);
+  document.readyState==='loading'?document.addEventListener('DOMContentLoaded',run):run();
+})();

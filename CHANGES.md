@@ -80,3 +80,15 @@ See README ("Profile posts"). New: `posts.js`, `posts.css`; changed: `api.mjs` (
 - The group-chat window has a **server chip** under its header (icon + server name). The minimized pill shows the server name too.
 - There is still ONE chat window, never one per server. On `cross.html` the chip is a switcher (▾) listing your servers with unread counts; choosing one re-points the same window to that server's channels. On a server page the chip is fixed to that server.
 - `chat.js`: all `/api/chat*` calls pass the chat's own server (`api(..., server)`); read-state and last channel are remembered per server; the remembered server is validated before the first poll. `auth.js`: an explicit-server call that gets "not a member" no longer clears the active server/reloads. `servers.js`: unread badge is attributed to the server the chat shows. Private messages/friends stay global.
+
+# All users' personal notes → Admin page (default admin only)
+- The ★ star on the calendar header is gone. **Admin → ⭐ All users' personal notes** (`overview.html`) now reads `GET /api/admin/notes` (global, default admin only): every account's personal notes + every server's shared tasks, each tagged with its server(s).
+- New **Server** filter (All servers / each server), **Sort by → Server**, and **Group by user/server** in the list view; cards show a 🖥 server tag. Works from any active server.
+
+# Personal notes live inside their server
+- `board:<uid>` is now a **scoped** key: each server keeps its own personal notes per user (`sv:<id>:board:<uid>`); CEPALCO keeps the original keys, so existing notes stay there (no migration). Personal notes never mix with another server's tasks.
+- **Cross-server calendar** compiles them: `/api/cross` returns `personal` tagged with `serverId/serverName`; chips are per server (plus "All personal"); a note's tag reads "👤 Personal · <server>"; "Open my notes in <server>" jumps into that server's Personal view.
+- Admin **All users' notes** reads each server's boards. Theme is global (always saved on the default board). Deleting an account or a server removes the related boards.
+
+# Show/hide password toggle (👁)
+`auth.js` adds a 👁/🙈 button to every password field (login, change password, admin Users page temporary/reset password). Stored passwords are salted scrypt hashes and cannot be read back, by design; the toggle reveals only what is being typed.
