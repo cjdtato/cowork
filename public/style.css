@@ -250,9 +250,10 @@ select{padding-right:8px}
   .th-cepalco .panel{box-shadow:3px 3px 0 #000}
 
   /* header: brand, then evenly spaced tools, then a 3-up stat strip */
-  .top{grid-template-columns:1fr;gap:12px}
-  .toolbar{display:grid;grid-template-columns:1fr 1fr;gap:8px;justify-content:stretch}
-  .toolbar .who-tag{grid-column:1/-1;margin:0;justify-content:center;min-height:36px}
+  .top{grid-template-columns:minmax(0,1fr);gap:12px}   /* minmax(0,…) lets long button labels shrink instead of pushing the page sideways */
+  .toolbar{display:flex;flex-wrap:wrap;gap:8px;justify-content:stretch}
+  .toolbar .who-tag{flex:1 1 100%;margin:0;justify-content:center;min-height:36px}
+  .toolbar>.mini,.toolbar>.themebox,.toolbar>.starwrap{flex:1 1 calc(50% - 4px)}   /* an odd last button stretches to the full row, never half-width */
   .toolbar .mini,.themebox,.themebox>.mini{width:100%}
   .toolbar .mini{min-height:40px;border-color:var(--bd)}
   .stats{padding-top:12px}
@@ -383,3 +384,14 @@ body.login{display:flex;flex-direction:column;align-items:center;justify-content
 
 /* header children that span the full width (overview filters, user chips) */
 .top>.ctl,.top>.ulist,.top>.help{grid-column:1/-1}
+
+/* ---------- polish pass ---------- */
+.help a,.sub a,.login a{color:var(--acc);font-weight:800;text-underline-offset:2px}
+.help a:hover,.sub a:hover,.login a:hover{text-decoration-thickness:2px}
+.ctl label:has(input[type=search]){grid-column:1/-1}   /* search gets its own full-width row instead of orphaning in column 1 */
+@media(max-width:700px){
+  .ctl label:has(input[type=search]){grid-column:1/-1}
+  .top>.row,.top>div>.row{display:grid;grid-template-columns:1fr 1fr;width:100%}
+  .top>.row>:first-child,.top>div>.row>:first-child{grid-column:1/-1}
+  .top>.row>*,.top>div>.row>*{width:100%;white-space:normal;text-align:center;padding-top:8px;padding-bottom:8px}
+}
