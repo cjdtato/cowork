@@ -443,16 +443,6 @@ console.log('Platform admin (default admin)');
   check('accounts: duplicate / weak password rejected', (await N('/admin/accounts', 'POST', { username: 'glob1', password: 'secret123' })).status === 400 && (await N('/admin/accounts', 'POST', { username: 'glob2', password: '123' })).status === 400);
   check('accounts: edit name, disable, delete', await (async () => { const id = (await N('/admin/accounts')).d.accounts.find(u => u.username === 'glob1').id; return (await N('/admin/accounts/' + id, 'PUT', { name: 'Renamed', active: false })).status === 200 && (await N('/admin/accounts')).d.accounts.find(u => u.id === id).active === false && (await N('/admin/accounts/' + id, 'DELETE')).status === 200 && !(await N('/admin/accounts')).d.accounts.some(u => u.id === id); })());
   check('accounts: non-platform-admin gets 403', (await SS('/admin/accounts')).status === 403 && (await SS('/admin/accounts', 'POST', { username: 'zz9', password: 'secret123' })).status === 403);
-  const ic = await N('/servers/cepalco/invite', 'POST');
-  check('cepalco code: Head creates it and sees it in the server list', ic.status === 200 && /^[A-Z2-9]{8}$/.test(ic.d.code) && (await N('/servers')).d.servers.find(v => v.id === 'cepalco').code === ic.d.code);
-  check('cepalco code: non-Head cannot create or see it', (await SS('/servers/cepalco/invite', 'POST')).status === 403 && (await SS('/servers')).d.servers.find(v => v.id === 'cepalco').code === undefined);
-  const NS = browser();
-  check('cepalco code: wrong code rejected', (await NS('/signup', 'POST', { code: 'AAAAAAAA', username: 'newbie', password: 'secret123' })).status === 404);
-  const su = await NS('/signup', 'POST', { code: ic.d.code, username: 'newbie', name: 'New Bie', password: 'secret123' });
-  check('cepalco code: sign up with the code creates a Staff account and logs in', su.status === 201 && (await NS('/me')).d.user.role === 'staff' && (await N('/admin/accounts')).d.accounts.some(u => u.username === 'newbie'));
-  check('cepalco code: duplicate username / weak password rejected', (await NS('/signup', 'POST', { code: ic.d.code, username: 'newbie', password: 'secret123' })).status === 400 && (await NS('/signup', 'POST', { code: ic.d.code, username: 'newbie2', password: '12' })).status === 400);
-  check('cepalco code: turning it off blocks sign-up', (await N('/servers/cepalco/invite', 'DELETE')).status === 200 && (await NS('/signup', 'POST', { code: ic.d.code, username: 'late', password: 'secret123' })).status === 404);
-  check('cepalco: Add member (existing account) sets position/role, unknown username is refused', await (async () => { const me = (await N('/admin/accounts')).d.accounts.find(u => u.username === 'newbie'); return (await N('/users', 'POST', { username: 'newbie', role: 'host' })).status === 200 && (await N('/users')).d.users.find(u => u.username === 'newbie').role === 'host' && (await N('/users', 'POST', { username: 'does-not-exist', role: 'staff' })).status === 404 && !!me; })());
   check('accounts: admin cannot delete himself', (await N('/admin/accounts/u_admin', 'DELETE')).status === 400);
 }
 

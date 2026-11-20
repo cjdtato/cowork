@@ -1,8 +1,8 @@
-# Co-Work v2.13.2 — Deploy Guide (GitHub → Netlify)
+# Co-Work v2.13.0 — Deploy Guide (GitHub → Netlify)
 
 ## 1. Push to GitHub
 ```
-git init && git add . && git commit -m "Co-Work v2.13.2"
+git init && git add . && git commit -m "Co-Work v2.13.0"
 git branch -M main
 git remote add origin <your-repo-url> && git push -u origin main
 ```

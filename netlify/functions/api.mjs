@@ -205,36 +205,6 @@ export default async (req) => {
       return new Response(Buffer.from(a.b64, 'base64'), { status: 200, headers: { 'Content-Type': a.type, 'Cache-Control': 'public, max-age=31536000, immutable', 'Netlify-CDN-Cache-Control': 'public, max-age=31536000, durable', 'X-Content-Type-Options': 'nosniff' } });
     }
 
-    // ----- sign up with the CEPALCO Server invite code (public) -----
-    if (path === '/signup' && m === 'POST') {
-      const code = String(body.code || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-      const ip = String(req.headers.get('x-nf-client-connection-ip') || req.headers.get('x-forwarded-for') || 'x').split(',')[0].replace(/[^0-9a-fA-F.:]/g, '').slice(0, 45) || 'x';
-      const fk = 'fail:signup:' + ip, f = await st.get(fk, { type: 'json' }), now = Date.now();
-      if (f && f.until > now) throw H('Too many wrong codes. Try again in 15 minutes.', 429);
-      const meta = await bs.get('svmeta:cepalco', { type: 'json' });
-      if (code.length !== 8 || !meta?.code || !same(meta.code, code)) {
-        const n = (f && !(f.until && f.until <= now) ? f.count : 0) + 1;
-        await st.setJSON(fk, { count: n, until: n >= MAX_FAILS ? now + LOCK_MS : 0 });
-        await new Promise(r => setTimeout(r, 400));
-        throw H('Invalid invite code.', 404);
-      }
-      const un = String(body.username || '').trim().toLowerCase();
-      if (!UN.test(un)) throw H('Username: 3–30 letters, numbers, . _ -');
-      if (String(body.password || '').length < 6) throw H('Password must be at least 6 characters.');
-      let nu;
-      await mutUsers(st, list => {
-        if (list.some(x => x.username === un)) throw H('Username already exists.');
-        if (list.length >= 500) throw H('This server is full.');
-        const salt = randomBytes(8).toString('hex');
-        nu = { id: 'u_' + randomBytes(6).toString('hex'), username: un, name: String(body.name || '').trim().slice(0, 60) || un, role: 'staff', active: true, salt, hash: hp(body.password, salt), created: today(), hostIds: [], tagIds: [] };
-        list.push(nu);
-      });
-      if (f) await st.delete(fk);
-      const token = randomBytes(24).toString('hex');
-      await st.setJSON('sess:' + token, { id: nu.id, pv: nu.pv, exp: now + SESSION_MS });
-      return J({ user: pub(nu, await getUsers(st)) }, 201, { 'Set-Cookie': `${COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_MS / 1000}` });
-    }
-
     // ----- login (public) -----
     if (path === '/login' && m === 'POST') {
       const un = String(body.username || '').trim().toLowerCase(), pw = String(body.password || '');
@@ -307,7 +277,7 @@ export default async (req) => {
     if (path === '/servers' && m === 'GET') {
       const list = await srvList();
       const dm = await bs.get('svmeta:cepalco', { type: 'json' });
-      const def = { logoAt: dm?.logoAt || 0, code: (meG.role === 'admin' || isSuper) ? (dm?.code || '') : undefined, id: DEF_SV, name: SV_NAME, owner: meG.id === DEFAULT_ADMIN, role: meG.role, members: allUs.filter(u => u.active).length, createdBy: allUs.find(u => u.id === DEFAULT_ADMIN)?.name || 'Administrator', isDefault: true };
+      const def = { logoAt: dm?.logoAt || 0, id: DEF_SV, name: SV_NAME, owner: meG.id === DEFAULT_ADMIN, role: meG.role, members: allUs.filter(u => u.active).length, createdBy: allUs.find(u => u.id === DEFAULT_ADMIN)?.name || 'Administrator', isDefault: true };
       const mine = list.filter(x => x.members[meG.id]).map(x => ({ logoAt: x.logoAt || 0, id: x.id, name: x.name, owner: x.ownerId === meG.id, role: x.members[meG.id].role, members: Object.keys(x.members).length, createdBy: allUs.find(u => u.id === x.ownerId)?.name || 'Unknown', ...(x.members[meG.id].role === 'admin' ? { code: x.code } : {}) }));
       return J({ servers: [def, ...mine], superAdmin: isSuper });
     }
@@ -354,11 +324,6 @@ export default async (req) => {
         await mutSrv(async list => { const x = list.find(v => v.id === sid); if (!x || (x.members[meG.id]?.role !== 'admin' && !isSuper)) throw H('Only a server Head can change the logo.', 403); await apply(x); });
       }
       return J({ ok: 1, logoAt: at, logoNext: at + LOGO_COOLDOWN });
-    }
-    if (path === '/servers/cepalco/invite' && (m === 'POST' || m === 'DELETE')) {   // CEPALCO sign-up code: create / renew (POST) or turn off (DELETE)
-      if (meG.role !== 'admin' && !isSuper) throw H('Only a server Head can do that.', 403);
-      const code = await mutate(bs, 'svmeta:cepalco', () => ({}), rec => { if (m === 'POST') rec.code = newCode(); else delete rec.code; return rec.code || null; });
-      return J({ code });
     }
     const svm = path.match(/^\/servers\/(s_[a-f0-9]{8})(?:\/(leave|invite))?$/);
     if (svm) {
@@ -467,8 +432,7 @@ export default async (req) => {
       };
       if (path === '/admin/servers' && m === 'GET') {
         const [tg, ch, sh] = await Promise.all(['tags', 'chat:channels', 'shared'].map(k => bs.get(k, { type: 'json' })));
-        const dmeta = await bs.get('svmeta:cepalco', { type: 'json' });
-        const def = { id: DEF_SV, code: dmeta?.code || '', name: SV_NAME, isDefault: true, created: '', ownerId: DEFAULT_ADMIN, owner: nameOf(DEFAULT_ADMIN) || 'Administrator', roles: (tg || []).map(t => t.name), channels: (ch || [{ id: 'general', name: 'general' }]).filter(c => !c.tag).map(c => c.name), tasks: (sh?.tasks || []).length,
+        const def = { id: DEF_SV, name: SV_NAME, isDefault: true, created: '', ownerId: DEFAULT_ADMIN, owner: nameOf(DEFAULT_ADMIN) || 'Administrator', roles: (tg || []).map(t => t.name), channels: (ch || [{ id: 'general', name: 'general' }]).filter(c => !c.tag).map(c => c.name), tasks: (sh?.tasks || []).length,
           members: allUs.filter(u => u.active).map(u => ({ id: u.id, name: u.name || u.username, username: u.username, role: u.role, roles: (u.tagIds || []).map(t => (tg || []).find(g => g.id === t)?.name).filter(Boolean) })) };
         return J({ servers: [def, ...(await Promise.all((await srvList()).map(detail)))] });
       }
@@ -1031,18 +995,8 @@ export default async (req) => {
     }
     if (path === '/users' && m === 'GET') return J({ users: us.map(u => pub(u, us)) });
     if (path === '/users' && m === 'POST') {
+      if (!isSuper) throw H('Creating accounts is in Admin settings (platform admin only).', 403);
       const un = String(body.username || '').trim().toLowerCase();
-      if (allUs.some(x => x.username === un)) {   // CEPALCO: "Add member (existing account)" = give an existing account its position / roles here (and re-enable it)
-        const tg = await tagsRaw(st), rl = ROLES.includes(body.role) ? body.role : 'staff';
-        await mutUsers(st, list => {
-          const u = list.find(x => x.username === un);
-          u.role = rl; u.active = true;
-          u.hostIds = rl === 'staff' ? uniq(body.hostIds).filter(h => list.some(x => x.id === h && x.role === 'host')) : [];
-          if ('tagIds' in body) u.tagIds = cleanTags(body.tagIds, tg);
-        });
-        return J({ ok: 1, existing: 1 });
-      }
-      if (!isSuper || !body.password) throw H('No account with that username. Create accounts in Admin → Accounts.', 404);
       if (!UN.test(un)) throw H('Username: 3–30 letters, numbers, . _ -');
       if (String(body.password || '').length < 6) throw H('Password must be at least 6 characters.');
       const role = ROLES.includes(body.role) ? body.role : 'staff';

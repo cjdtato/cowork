@@ -8,56 +8,56 @@ const css=`
 #svRail:hover,#svRail:focus-within,#svRail.open{width:248px;box-shadow:6px 0 24px rgba(0,0,0,.14)}
 #svRail .svl{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:4px;overflow:hidden auto;scrollbar-width:none;margin:0 -12px;padding:0 12px}
 #svRail .svl::-webkit-scrollbar{display:none}
-#svRail{font-family:var(--font-body,Quicksand,system-ui,sans-serif);-webkit-font-smoothing:antialiased}
+#svRail{font-family:Quicksand,system-ui,-apple-system,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}
 .th-cepalco #svRail{border-right-width:3px}
-#svRail .svh{font:800 .65rem/1 var(--font-body,Quicksand,system-ui,sans-serif);letter-spacing:.08em;text-transform:uppercase;opacity:.55;height:14px;line-height:14px;white-space:nowrap;padding-left:4px;overflow:hidden}
+#svRail .svh{font:800 .65rem/1 Quicksand,system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;opacity:.55;height:14px;line-height:14px;white-space:nowrap;padding-left:4px;overflow:hidden}
 #svRail hr{border:0;border-top:1px solid var(--bd,#ddd);margin:6px 4px;flex:0 0 auto;width:calc(100% - 8px)}
-.svi{position:relative;display:flex;align-items:center;gap:12px;width:100%;min-height:48px;padding:2px;border:0;background:none;color:inherit;font:700 .9rem var(--font-body,Quicksand,system-ui,sans-serif);text-align:left;cursor:pointer;border-radius:16px;border:1px solid transparent;transition:background-color .15s,border-color .15s,transform .12s;white-space:nowrap;flex:0 0 auto;text-decoration:none}
+.svi{position:relative;display:flex;align-items:center;gap:12px;width:100%;min-height:48px;padding:2px;border:0;background:none;color:inherit;font:700 .9rem Quicksand,system-ui,sans-serif;text-align:left;cursor:pointer;border-radius:16px;border:1px solid transparent;transition:background-color .15s,border-color .15s,transform .12s;white-space:nowrap;flex:0 0 auto;text-decoration:none}
 .svi:hover{background:var(--soft,rgba(127,127,127,.14));border-color:var(--bd,#ddd)}
 .svi:active{transform:scale(.98)}
 .svi:focus-visible{outline:2px solid var(--acc,#6366f1);outline-offset:1px}
-.svi i,.svi .av{flex:0 0 42px;width:42px;height:42px;border-radius:14px;display:grid;place-items:center;font:800 .95rem var(--font-display,Fredoka,Quicksand,sans-serif);font-style:normal;color:#fff;transition:border-radius .15s,transform .15s;overflow:hidden}
+.svi i,.svi .av{flex:0 0 42px;width:42px;height:42px;border-radius:14px;display:grid;place-items:center;font:800 .95rem Fredoka,Quicksand,system-ui,sans-serif;font-style:normal;color:#fff;transition:border-radius .15s,transform .15s;overflow:hidden}
 .svi i{position:relative}
 .svi i img,#svDlg .lgp img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
-#svDlg .lgp{position:relative;width:56px;height:56px;flex:0 0 56px!important;border-radius:14px;overflow:hidden;display:grid;place-items:center;color:#fff;font:800 1.05rem var(--font-display,Fredoka,Quicksand,sans-serif)}
+#svDlg .lgp{position:relative;width:56px;height:56px;flex:0 0 56px!important;border-radius:14px;overflow:hidden;display:grid;place-items:center;color:#fff;font:800 1.05rem Fredoka,sans-serif}
 .svi .av img{width:100%;height:100%;object-fit:cover;display:block}
 .svi:hover i,.svi.on i,.svi:hover .av{border-radius:11px}
 .svi:active i{transform:scale(.94)}
 .svi.on{background:var(--pri,#6366f1);color:var(--pi,#fff);border-color:var(--pri,#6366f1);box-shadow:var(--sh,none)}
 .svi.on small{opacity:.85}
 .svi.on i{box-shadow:0 0 0 2px rgba(255,255,255,.55)}
-.svi>span:not(.av){overflow:hidden;text-overflow:ellipsis;display:flex;flex-direction:column;min-width:0;line-height:1.2;font-family:var(--font-display,Fredoka,Quicksand,system-ui,sans-serif);font-weight:500;font-size:.95rem}
-.svi small{font:600 .7rem var(--font-body,Quicksand,system-ui,sans-serif);opacity:.65;overflow:hidden;text-overflow:ellipsis}
+.svi>span:not(.av){overflow:hidden;text-overflow:ellipsis;display:flex;flex-direction:column;min-width:0;line-height:1.2;font-family:Fredoka,Quicksand,system-ui,sans-serif;font-weight:500;font-size:.95rem}
+.svi small{font:600 .7rem Quicksand,system-ui,sans-serif;opacity:.65;overflow:hidden;text-overflow:ellipsis}
 .svi.add i,.svi.cfg i{background:var(--soft,rgba(127,127,127,.2));border:1px solid var(--bd,#ddd);color:inherit;font-size:1.2rem}
 .svi.add:hover i{background:#16a34a;color:#fff}
 .svi.out i{background:rgba(220,38,38,.12);color:#dc2626;font-size:1.05rem}
 .svi.out:hover{background:rgba(220,38,38,.12)}
 .svi.out:hover i{background:#dc2626;color:#fff}
-.svi.me .av{background:var(--pri,#6366f1);color:var(--pi,#fff);font-family:var(--font-display,Fredoka,Quicksand,system-ui,sans-serif)}
+.svi.me .av{background:var(--pri,#6366f1);color:var(--pi,#fff);font-family:Fredoka,sans-serif}
 body.hasrail{padding-left:72px}
-.svb{position:absolute;left:30px;top:0;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#dc2626;color:#fff;font:800 .65rem/18px var(--font-body,Quicksand,system-ui,sans-serif);text-align:center;border:2px solid var(--panel,#fff);box-sizing:content-box}
+.svb{position:absolute;left:30px;top:0;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#dc2626;color:#fff;font:800 .65rem/18px system-ui,sans-serif;text-align:center;border:2px solid var(--panel,#fff);box-sizing:content-box}
 .svb[hidden]{display:none}
 .svi.fr.on i{background:var(--pri,#6366f1);color:var(--pi,#fff)}
 #svTab{display:none}
 @media(max-width:700px){
- body.hasrail{padding-left:22px}
+ body.hasrail{padding-left:0}
  #svRail{width:248px;transform:translateX(-100%);transition:transform .18s}
  #svRail.open{transform:none}
- #svTab{font-family:var(--font-body,Quicksand,system-ui,sans-serif);display:grid;position:fixed;left:0;top:50%;z-index:59;width:26px;height:56px;place-items:center;border:1px solid var(--bd,#ddd);border-left:0;border-radius:0 12px 12px 0;background:var(--panel,#fff);color:var(--ink,#111);cursor:pointer;box-shadow:var(--sh,none)}
+ #svTab{font-family:Quicksand,system-ui,sans-serif;display:grid;position:fixed;left:0;top:50%;z-index:59;width:26px;height:56px;place-items:center;border:1px solid var(--bd,#ddd);border-left:0;border-radius:0 12px 12px 0;background:var(--panel,#fff);color:var(--ink,#111);cursor:pointer;box-shadow:var(--sh,none)}
 }
 @media(prefers-reduced-motion:reduce){#svRail,.svi i{transition:none}}
-#svNp{position:fixed;left:84px;bottom:12px;z-index:70;width:380px;max-width:calc(100vw - 96px);max-height:min(560px,80dvh);display:flex;flex-direction:column;background:var(--panel,#fff);color:var(--ink,#111);border:1px solid var(--bd,#ddd);border-radius:18px;box-shadow:var(--sh,none),0 12px 40px rgba(0,0,0,.18);overflow:hidden;font-family:var(--font-body,Quicksand,system-ui,sans-serif)}
+#svNp{position:fixed;left:84px;bottom:12px;z-index:70;width:380px;max-width:calc(100vw - 96px);max-height:min(560px,80dvh);display:flex;flex-direction:column;background:var(--panel,#fff);color:var(--ink,#111);border:1px solid var(--bd,#ddd);border-radius:18px;box-shadow:var(--sh,none),0 12px 40px rgba(0,0,0,.18);overflow:hidden;font-family:Quicksand,system-ui,sans-serif}
 .th-cepalco #svNp{border-width:3px}
 #svNp[hidden],#svTh2[hidden]{display:none}
-#svTh2{position:fixed;left:84px;bottom:12px;z-index:70;width:300px;max-width:calc(100vw - 96px);padding:12px;background:var(--panel,#fff);color:var(--ink,#111);border:1px solid var(--bd,#ddd);border-radius:18px;box-shadow:var(--sh,none),0 12px 40px rgba(0,0,0,.18);font-family:var(--font-body,Quicksand,system-ui,sans-serif)}
+#svTh2{position:fixed;left:84px;bottom:12px;z-index:70;width:300px;max-width:calc(100vw - 96px);padding:12px;background:var(--panel,#fff);color:var(--ink,#111);border:1px solid var(--bd,#ddd);border-radius:18px;box-shadow:var(--sh,none),0 12px 40px rgba(0,0,0,.18);font-family:Quicksand,system-ui,sans-serif}
 .th-cepalco #svTh2{border-width:3px}
-#svTh2 h4{margin:2px 6px 8px;font:600 1.1rem var(--font-display,Fredoka,Quicksand,sans-serif)}
+#svTh2 h4{margin:2px 6px 8px;font:600 1.1rem Fredoka,Quicksand,sans-serif}
 #svTh2 .swopt[aria-pressed=true]{border-color:var(--pri,#6366f1)}
 #svNp .nhead{display:flex;justify-content:space-between;align-items:center;padding:14px 16px 4px}
-#svNp h4{margin:0;font:600 1.25rem var(--font-display,Fredoka,Quicksand,sans-serif)}
-#svNp .nlink{background:none;border:0;color:var(--pri,#6366f1);font:800 .78rem var(--font-body,Quicksand,system-ui,sans-serif);cursor:pointer;min-height:32px}
+#svNp h4{margin:0;font:600 1.25rem Fredoka,Quicksand,sans-serif}
+#svNp .nlink{background:none;border:0;color:var(--pri,#6366f1);font:800 .78rem Quicksand,sans-serif;cursor:pointer;min-height:32px}
 #svNp .ntabs{display:flex;gap:6px;padding:6px 12px}
-#svNp .ntab{min-height:32px;padding:0 14px;border-radius:99px;border:0;background:transparent;font:800 .82rem var(--font-body,Quicksand,system-ui,sans-serif);opacity:.7;cursor:pointer;color:inherit}
+#svNp .ntab{min-height:32px;padding:0 14px;border-radius:99px;border:0;background:transparent;font:800 .82rem Quicksand,sans-serif;opacity:.7;cursor:pointer;color:inherit}
 #svNp .ntab.on{background:var(--soft,#f1f5f9);opacity:1;color:var(--pri,#6366f1)}
 #svNp .nlist{list-style:none;margin:0;padding:4px 8px 10px;overflow-y:auto;overscroll-behavior:contain}
 #svNp .nitem{display:flex;align-items:center;gap:12px;padding:10px 8px;border-radius:14px;cursor:pointer}
@@ -75,11 +75,11 @@ body.hasrail{padding-left:72px}
 @media(max-width:700px){#svTh2{left:10px;right:10px;width:auto;max-width:none;bottom:calc(10px + env(safe-area-inset-bottom,0px))}#svNp{left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));width:auto;max-width:none}}
 #svDlg{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;padding:12px;background:rgba(15,23,42,.6)}
 #svDlg[hidden]{display:none}
-#svDlg .box{font-family:var(--font-body,Quicksand,system-ui,sans-serif);box-shadow:var(--sh,none);width:min(420px,100%);max-height:90dvh;overflow:auto;padding:20px;border-radius:18px;background:var(--panel,#fff);color:var(--ink,#111);border:1px solid var(--bd,#ddd);display:flex;flex-direction:column;gap:10px}
-#svDlg h3{margin:0;font:600 1.2rem var(--font-display,Fredoka,Quicksand,sans-serif)}.th-cepalco #svDlg .box{border-width:3px}#svDlg p,#svDlg label{margin:0;font-size:.82rem;opacity:.8}
+#svDlg .box{font-family:Quicksand,system-ui,sans-serif;box-shadow:var(--sh,none);width:min(420px,100%);max-height:90dvh;overflow:auto;padding:20px;border-radius:18px;background:var(--panel,#fff);color:var(--ink,#111);border:1px solid var(--bd,#ddd);display:flex;flex-direction:column;gap:10px}
+#svDlg h3{margin:0;font:600 1.2rem Fredoka,Quicksand,sans-serif}.th-cepalco #svDlg .box{border-width:3px}#svDlg p,#svDlg label{margin:0;font-size:.82rem;opacity:.8}
 #svDlg input{width:100%;min-height:var(--ctl,44px);padding:10px 12px;border-radius:var(--r,12px);border:1px solid var(--bd,#ccc);background:transparent;color:inherit;font:inherit}
 #svDlg .r{display:flex;gap:8px;flex-wrap:wrap}#svDlg .r>*{flex:1 1 auto}
-#svDlg .code{font:800 1.3rem var(--font-display,Fredoka,Quicksand,sans-serif);letter-spacing:.18em;text-align:center;padding:10px;border:1px dashed var(--bd,#999);border-radius:10px;user-select:all}
+#svDlg .code{font:800 1.3rem Fredoka,ui-monospace,monospace;letter-spacing:.18em;text-align:center;padding:10px;border:1px dashed var(--bd,#999);border-radius:10px;user-select:all}
 #svDlg .err{color:#dc2626;font-size:.8rem;min-height:1em}
 #svDlg .danger{color:#dc2626}`;
 const st=document.createElement('style');st.textContent=css;document.head.append(st);
@@ -118,7 +118,7 @@ function infoDlg(){
   const s=LIST.find(x=>x.id===cur())||LIST[0],isH=s.role==='admin',def=s.id===DEF;
   const d=dlg(`<h3>${esc(s.name)}</h3><p>Created by <b>${esc(s.createdBy)}</b> · ${s.members} member${s.members===1?'':'s'} · your position: <b>${ROLE[s.role]||s.role}</b></p>
   ${def?'<p>Positions (Head / Supervisor / Staff) and custom roles (e.g. COLLECTION, BILLING) belong to this server.</p>':''}
-  ${s.code?`<label>Invite code (people join as Staff)</label><div class="code">${esc(s.code)}</div><div class="r"><button class="btn" id="svCp">Copy</button><button class="btn" id="svRs">New code</button>${def?'<button class="btn" id="svOff">Turn off</button>':''}</div>${def?'<p style="font-size:.75rem;opacity:.75">New people sign up on the login page with this code.</p>':''}`:(def&&isH?'<label>Invite code</label><p style="font-size:.78rem;opacity:.8">No code yet — create one so new people can sign up on the login page.</p><div class="r"><button class="btn pri" id="svRs">Create invite code</button></div>':'')}
+  ${s.code?`<label>Invite code (people join as Staff)</label><div class="code">${esc(s.code)}</div><div class="r"><button class="btn" id="svCp">Copy</button><button class="btn" id="svRs">New code</button></div>`:''}
   ${isH?`<label>Server logo <span style="opacity:.7">(one change every ${LOGO_DAYS} days)</span></label><div class="r" style="align-items:center;flex-wrap:nowrap"><span class="lgp" id="svLg" style="${sbg(s)}">${sini(s)}${limg(s)}</span><button class="btn" id="svLp" type="button">Choose image</button><button class="btn pri" id="svLs" type="button" disabled>Save logo</button></div><input type="file" id="svLf" accept="image/jpeg,image/png,image/webp" hidden><p id="svLn"></p>`:''}
   ${!def&&isH?`<label>Rename server</label><input id="svRn" value="${esc(s.name)}" maxlength="30"><div class="r"><button class="btn" id="svRb">Save name</button></div>`:''}
   ${isH?'<div class="r"><a class="btn" href="users.html">Manage people &amp; roles</a></div>':''}
@@ -136,8 +136,7 @@ function infoDlg(){
     $('#svLs').onclick=()=>pic&&act(d,async()=>{$('#svLs').disabled=true;try{await api('/api/servers/'+s.id+'/logo','POST',{image:pic});location.reload()}catch(x){$('#svLs').disabled=false;throw x}});
   }
   if($('#svCp'))$('#svCp').onclick=()=>navigator.clipboard&&navigator.clipboard.writeText(s.code).then(()=>{$('#svCp').textContent='Copied ✓'});
-  if($('#svRs'))$('#svRs').onclick=()=>act(d,async()=>{const r=await api('/api/servers/'+(def?'cepalco':s.id)+'/invite','POST',{});s.code=r.code;infoDlg()});
-  if($('#svOff'))$('#svOff').onclick=()=>{if(!confirm('Turn off the invite code? Nobody can sign up with it until you create a new one.'))return;act(d,async()=>{await api('/api/servers/cepalco/invite','DELETE');s.code='';infoDlg()})};
+  if($('#svRs'))$('#svRs').onclick=()=>act(d,async()=>{const r=await api('/api/servers/'+s.id+'/invite','POST',{});s.code=r.code;infoDlg()});
   if($('#svRb'))$('#svRb').onclick=()=>act(d,async()=>{await api('/api/servers/'+s.id,'PUT',{name:$('#svRn').value});location.reload()});
   if($('#svL'))$('#svL').onclick=()=>confirm('Leave "'+s.name+'"?')&&act(d,async()=>{await api('/api/servers/'+s.id+'/leave','POST',{});go(DEF)});
   if($('#svD'))$('#svD').onclick=()=>confirm('Delete "'+s.name+'" with its chat, roles and shared tasks? This cannot be undone.')&&act(d,async()=>{await api('/api/servers/'+s.id,'DELETE');go(DEF)});
@@ -253,8 +252,8 @@ function build(){
   document.addEventListener('click',e=>{if(!r.contains(e.target))r.classList.remove('open')});
   if(cs&&cs.id!==DEF)document.title=cs.name+' · '+document.title;
   // Users page inside a user-made server: people are existing accounts (added by username), not new accounts
-  if(/users\.html$/.test(location.pathname)){
-    const st=document.createElement('style');st.textContent='.pwx:has(#fp){display:none!important}';document.head.append(st);const hide=['#fn','#fp','#fa'];hide.forEach(q=>{const e=document.querySelector(q);if(e)(e.closest('label')||e).hidden=true});
+  if(cur()!==DEF&&/users\.html$/.test(location.pathname)){
+    const hide=['#fn','#fp','#fa'];hide.forEach(q=>{const e=document.querySelector(q);if(e)(e.closest('label')||e).hidden=true});
     const h=document.querySelector('#ft');if(h)h.textContent='Add member (existing account)';
     const fu=document.querySelector('#fu');if(fu)fu.placeholder='Username of an existing account';
   }
