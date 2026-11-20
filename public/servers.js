@@ -48,7 +48,11 @@ body.hasrail{padding-left:72px}
 @media(prefers-reduced-motion:reduce){#svRail,.svi i{transition:none}}
 #svNp{position:fixed;left:84px;bottom:12px;z-index:70;width:380px;max-width:calc(100vw - 96px);max-height:min(560px,80dvh);display:flex;flex-direction:column;background:var(--panel,#fff);color:var(--ink,#111);border:1px solid var(--bd,#ddd);border-radius:18px;box-shadow:var(--sh,none),0 12px 40px rgba(0,0,0,.18);overflow:hidden;font-family:Quicksand,system-ui,sans-serif}
 .th-cepalco #svNp{border-width:3px}
-#svNp[hidden]{display:none}
+#svNp[hidden],#svTh2[hidden]{display:none}
+#svTh2{position:fixed;left:84px;bottom:12px;z-index:70;width:300px;max-width:calc(100vw - 96px);padding:12px;background:var(--panel,#fff);color:var(--ink,#111);border:1px solid var(--bd,#ddd);border-radius:18px;box-shadow:var(--sh,none),0 12px 40px rgba(0,0,0,.18);font-family:Quicksand,system-ui,sans-serif}
+.th-cepalco #svTh2{border-width:3px}
+#svTh2 h4{margin:2px 6px 8px;font:600 1.1rem Fredoka,Quicksand,sans-serif}
+#svTh2 .swopt[aria-pressed=true]{border-color:var(--pri,#6366f1)}
 #svNp .nhead{display:flex;justify-content:space-between;align-items:center;padding:14px 16px 4px}
 #svNp h4{margin:0;font:600 1.25rem Fredoka,Quicksand,sans-serif}
 #svNp .nlink{background:none;border:0;color:var(--pri,#6366f1);font:800 .78rem Quicksand,sans-serif;cursor:pointer;min-height:32px}
@@ -68,7 +72,7 @@ body.hasrail{padding-left:72px}
 #svNp .nempty{text-align:center;padding:28px 12px;opacity:.6;font-size:.85rem}
 .svi.nt.ring i{animation:svring .6s ease-in-out 2}
 @keyframes svring{0%,100%{transform:rotate(0)}20%{transform:rotate(14deg)}40%{transform:rotate(-12deg)}60%{transform:rotate(8deg)}80%{transform:rotate(-6deg)}}
-@media(max-width:700px){#svNp{left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));width:auto;max-width:none}}
+@media(max-width:700px){#svTh2{left:10px;right:10px;width:auto;max-width:none;bottom:calc(10px + env(safe-area-inset-bottom,0px))}#svNp{left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));width:auto;max-width:none}}
 #svDlg{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;padding:12px;background:rgba(15,23,42,.6)}
 #svDlg[hidden]{display:none}
 #svDlg .box{font-family:Quicksand,system-ui,sans-serif;box-shadow:var(--sh,none);width:min(420px,100%);max-height:90dvh;overflow:auto;padding:20px;border-radius:18px;background:var(--panel,#fff);color:var(--ink,#111);border:1px solid var(--bd,#ddd);display:flex;flex-direction:column;gap:10px}
@@ -99,7 +103,7 @@ async function shrink(file){
 function go(id){if(id===cur()&&!ONX)return;id===DEF?localStorage.removeItem(KEY):localStorage.setItem(KEY,id);ONX?location.assign('index.html'):location.reload()}
 function dlg(html){let d=document.getElementById('svDlg');if(!d){d=document.createElement('div');d.id='svDlg';d.hidden=true;d.addEventListener('mousedown',e=>{if(e.target===d)d.hidden=true});document.body.append(d)}d.innerHTML='<div class="box">'+html+'</div>';d.hidden=false;return d}
 const close=()=>{const d=document.getElementById('svDlg');if(d)d.hidden=true};
-async function act(d,fn){const e=d.querySelector('.err');try{e.textContent='';await fn()}catch(x){e.textContent=x.message||'Something went wrong'}}
+async function act(d,fn){const e=d.querySelector('.err');sessionStorage.removeItem('stb_svl');try{e.textContent='';await fn()}catch(x){e.textContent=x.message||'Something went wrong'}}
 function addDlg(){
   const d=dlg(`<h3>Add a server</h3><p>Create your own, or join one with an invite code.</p>
   <input id="svN" placeholder="Server name" maxlength="30"><div class="r"><button class="btn pri" id="svC">＋ Create server</button></div>
@@ -163,7 +167,7 @@ const NT={items:[],f:'all',last:-1,
     this.items.forEach(n=>{if(!ids||ids.includes(n.id))n.read=true});this.last=this.items.filter(n=>!n.read).length;this.render();
     try{await api('/api/notifications/read','POST',ids?{ids}:{})}catch(e){}
   },
-  toggle(open){const p=document.getElementById('svNp');open=open===undefined?p.hidden:open;p.hidden=!open;document.getElementById('svNt').setAttribute('aria-expanded',String(open));if(open)this.load()},
+  toggle(open){const p=document.getElementById('svNp');if(open!==false)TH.toggle(false);open=open===undefined?p.hidden:open;p.hidden=!open;document.getElementById('svNt').setAttribute('aria-expanded',String(open));if(open)this.load()},
   init(){
     const p=document.createElement('div');p.id='svNp';p.hidden=true;p.setAttribute('role','dialog');p.setAttribute('aria-label','Notifications');
     p.innerHTML='<div class="nhead"><h4>Notifications</h4><button class="nlink" id="nMarkAll" type="button">Mark all as read</button></div><div class="ntabs"><button class="ntab on" data-f="all" type="button">All</button><button class="ntab" data-f="unread" type="button">Unread</button></div><ul class="nlist" id="nList"></ul>';
@@ -183,24 +187,66 @@ const NT={items:[],f:'all',last:-1,
     document.addEventListener('click',e=>{if(!p.hidden&&!p.contains(e.target)&&!e.target.closest('#svNt'))this.toggle(false)});
     document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!p.hidden)this.toggle(false)});
     this.load();
-    setInterval(()=>{if(!document.hidden)this.load()},60000);
+    setInterval(()=>{if(!document.hidden)this.load()},90000);
     document.addEventListener('visibilitychange',()=>{if(!document.hidden)this.load()});
   }};
+/* ---------- theme picker (lives in the server menu, below Friends) ---------- */
+const THEMES=[['white','Classic','#6366f1','#f6f7f9'],['dark','Dark','#10b981','#0b0f19'],['midnight','Midnight','#818cf8','#0f1020'],['graphite','Graphite','#e5e5e5','#121212'],['ocean','Ocean','#0284c7','#eef6fb'],['forest','Forest','#2f855a','#f1f5ee'],['lavender','Lavender','#7c3aed','#f5f3ff'],['sunset','Sunset','#ea580c','#fff7ed'],['sand','Sand','#92400e','#f5f1e8'],['pink','Pink','#e11d48','#fff1f2'],['cepalco','CEPALCO','#000000','#facc15']];
+const TH={
+  mark(){const c=localStorage.getItem('stb_theme')||'white';document.querySelectorAll('#svTh2 [data-th]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.th===c)))},
+  toggle(open){const p=document.getElementById('svTh2');open=open===undefined?p.hidden:open;if(open&&typeof NT!=='undefined'&&!document.getElementById('svNp').hidden)NT.toggle(false);p.hidden=!open;document.getElementById('svTh').setAttribute('aria-expanded',String(open));if(open)this.mark()},
+  init(){
+    const p=document.createElement('div');p.id='svTh2';p.hidden=true;p.setAttribute('role','group');p.setAttribute('aria-label','Theme');
+    p.innerHTML='<h4>Theme</h4><div class="themegrid">'+THEMES.map(([id,n,a,b])=>`<button class="swopt" type="button" data-th="${id}" aria-pressed="false"><i class="dotc" style="--a:${a};--b:${b}"></i>${n}</button>`).join('')+'</div>';
+    document.body.append(p);
+    p.onclick=e=>{const b=e.target.closest('[data-th]');if(!b)return;const t=b.dataset.th;
+      localStorage.setItem('stb_theme',t);applyTheme(t);this.mark();
+      if(window.__cwSetTheme)window.__cwSetTheme(t);else api('/api/theme','POST',{theme:t}).catch(()=>{});   // index page saves via its own board; other pages use the small /theme call
+      this.toggle(false)};
+    document.addEventListener('click',e=>{if(!p.hidden&&!p.contains(e.target)&&!e.target.closest('#svTh'))this.toggle(false)});
+    document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!p.hidden)this.toggle(false)});
+  }};
+/* ---------- unread chat on the server icons (Discord style): any channel, any server I am in ---------- */
+const SEENK=id=>id===DEF?'cw_seen':'cw_seen_'+id;   // same keys chat.js uses for what I have read
+const UN={};let unBusy=false,unChat=false;
+function paintUn(){
+  document.querySelectorAll('#svRail .svb[data-sv]').forEach(b=>{
+    const n=UN[b.dataset.sv]||0;b.hidden=!n;b.textContent=n>99?'99+':n;
+    const bt=b.closest('.svi'),nm=bt&&bt.title;if(bt)bt.setAttribute('aria-label',n?`${nm}, ${n} unread chat message${n===1?'':'s'}`:nm);
+  });
+}
+window.addEventListener('cw:unread',e=>{UN[cur()]=e.detail.n;unChat=true;paintUn()});   // this server: chat.js knows exactly what is on screen
+async function pollUn(){
+  if(unBusy||document.hidden||!LIST.length)return;unBusy=true;
+  try{
+    const seen={};
+    for(const x of LIST){let o=null;try{o=JSON.parse(localStorage.getItem(SEENK(x.id))||'null')}catch(e){}
+      const v=o&&typeof o==='object'?Object.entries(o).map(([k,t])=>k+':'+t).join(','):'';if(v)seen[x.id]=v}
+    const d=await api('/api/servers/unread','POST',{seen});
+    for(const [id,x] of Object.entries(d.servers||{})){
+      if(!(id===cur()&&unChat))UN[id]=x.unread;
+      if(id!==cur()&&!(id in seen)){try{localStorage.setItem(SEENK(id),JSON.stringify(x.last))}catch(e){}}   // first look at a server from this browser: what is already there counts as read (the open server is left to chat.js)
+    }
+    paintUn();
+  }catch(e){}finally{unBusy=false}
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)pollUn()});
+setInterval(pollUn,60000);   // one small request per minute while the tab is visible
 function build(){
   const cs=LIST.find(x=>x.id===cur());if(!cs){localStorage.removeItem(KEY);if(cur()!==DEF)return location.reload()}
   document.body.classList.add('hasrail');
   const r=document.createElement('nav');r.id='svRail';r.setAttribute('aria-label','Servers');
   const nm=ME?(ME.name||ME.username):'Profile',av=ME&&ME.avatarAt?`<img alt="" src="/api/avatar?v=${ME.avatarAt}" onerror="this.remove()">`:'';
-  r.innerHTML='<div class="svl"><div class="svh">Servers</div><button class="svi xs'+(ONX?' on':'')+'" id="svCross" title="Cross-server Calendar" aria-label="Cross-server Calendar"'+(ONX?' aria-current="page"':'')+'><i style="background:linear-gradient(135deg,#6366f1,#ec4899)">🗓</i><span>Cross-server Calendar<small>All servers · personal + shared</small></span></button><hr style="margin:2px 4px">'+LIST.map(s=>`<button class="svi${s.id===cur()&&!ONX?' on':''}" data-id="${esc(s.id)}" title="${esc(s.name)}" aria-label="${esc(s.name)}"${s.id===cur()?' aria-current="true"':''}>${icon(s)}<span>${esc(s.name)}<small>${esc(ROLE[s.role]||'')}</small></span></button>`).join('')
+  r.innerHTML='<div class="svl"><button class="svi nt" id="svNt" title="Notifications" aria-label="Notifications" aria-haspopup="true" aria-expanded="false"><i style="background:var(--soft,#eee);color:inherit;border:1px solid var(--bd,#ddd);font-size:1.15rem">🔔</i><em class="svb" hidden></em><span>Notifications<small>Tasks, friends &amp; posts</small></span></button><hr style="margin:2px 4px"><div class="svh">Servers</div><button class="svi xs'+(ONX?' on':'')+'" id="svCross" title="Cross-server Calendar" aria-label="Cross-server Calendar"'+(ONX?' aria-current="page"':'')+'><i style="background:linear-gradient(135deg,#6366f1,#ec4899)">🗓</i><span>Cross-server Calendar<small>All servers · personal + shared</small></span></button><hr style="margin:2px 4px">'+LIST.map(s=>`<button class="svi${s.id===cur()&&!ONX?' on':''}" data-id="${esc(s.id)}" title="${esc(s.name)}" aria-label="${esc(s.name)}"${s.id===cur()?' aria-current="true"':''}>${icon(s)}<em class="svb" data-sv="${esc(s.id)}" hidden></em><span>${esc(s.name)}<small>${esc(ROLE[s.role]||'')}</small></span></button>`).join('')
    +'<button class="svi add" id="svAdd" title="Create or join a server"><i>＋</i><span>Add a server</span></button></div>'
    +'<hr><button class="svi fr" id="svFr" title="Friends &amp; private messages" aria-label="Friends and private messages"><i>🧑‍🤝‍🧑</i><em class="svb" hidden></em><span>Friends<small>Private messages</small></span></button>'
-   +'<button class="svi nt" id="svNt" title="Notifications" aria-label="Notifications" aria-haspopup="true" aria-expanded="false"><i style="background:var(--soft,#eee);color:inherit;border:1px solid var(--bd,#ddd);font-size:1.15rem">🔔</i><em class="svb" hidden></em><span>Notifications<small>Tasks, friends &amp; posts</small></span></button>'
+   +'<button class="svi cfg" id="svTh" title="Theme" aria-label="Theme" aria-haspopup="true" aria-expanded="false"><i style="font-size:1.1rem">🎨</i><span>Theme<small>Colors &amp; look</small></span></button>'
    +(SUPER?'<button class="svi cfg" id="svAdm" title="Admin: all servers"><i>🛡</i><span>Admin<small>All servers · manage anything</small></span></button>':'')
    +'<button class="svi cfg" id="svCfg" title="Server info"><i>ⓘ</i><span>Server info</span></button>'
    +`<button class="svi me" id="svMe" title="My profile (all servers)"><span class="av">${av||esc(ini(nm))}</span><span>${esc(nm)}<small>My profile · all servers</small></span></button>`
    +'<button class="svi out" id="svOut" title="Log out"><i>⎋</i><span>Log out</span></button>';
-  r.onclick=e=>{const b=e.target.closest('.svi');if(!b)return;if(b.id==='svNt'){e.stopPropagation();r.classList.remove('open');return NT.toggle()}if(b.id==='svCross')return ONX?r.classList.remove('open'):location.assign('cross.html');if(b.id==='svAdd')return addDlg();if(b.id==='svCfg')return infoDlg();if(b.id==='svAdm')return location.assign('admin-servers.html');if(b.id==='svFr'){r.classList.remove('open');return window.__cwF?window.__cwF.toggle():location.assign('index.html?friends=1')}if(b.id==='svOut')return logout();if(b.id==='svMe')return window.openProfile?window.openProfile():location.assign('index.html?profile=1');go(b.dataset.id)};
-  document.body.append(r);if(window.__cwF)window.__cwF.badges();NT.init();
+  r.onclick=e=>{const b=e.target.closest('.svi');if(!b)return;if(b.id==='svTh'){e.stopPropagation();r.classList.remove('open');return TH.toggle()}if(b.id==='svNt'){e.stopPropagation();r.classList.remove('open');return NT.toggle()}if(b.id==='svCross')return ONX?r.classList.remove('open'):location.assign('cross.html');if(b.id==='svAdd')return addDlg();if(b.id==='svCfg')return infoDlg();if(b.id==='svAdm')return location.assign('admin-servers.html');if(b.id==='svFr'){r.classList.remove('open');return window.__cwF?window.__cwF.toggle():location.assign('index.html?friends=1')}if(b.id==='svOut')return logout();if(b.id==='svMe')return window.openProfile?window.openProfile():location.assign('index.html?profile=1');go(b.dataset.id)};
+  document.body.append(r);if(window.__cwF)window.__cwF.badges();NT.init();TH.init();
   const t=document.createElement('button');t.id='svTab';t.textContent='☰';t.setAttribute('aria-label','Servers');t.onclick=e=>{e.stopPropagation();r.classList.toggle('open')};document.body.append(t);
   document.addEventListener('click',e=>{if(!r.contains(e.target))r.classList.remove('open')});
   if(cs&&cs.id!==DEF)document.title=cs.name+' · '+document.title;
@@ -211,9 +257,12 @@ function build(){
     const fu=document.querySelector('#fu');if(fu)fu.placeholder='Username of an existing account';
   }
 }
-async function init(){let r0;try{r0=await api('/api/servers');LIST=r0.servers;SUPER=!!r0.superAdmin}catch(e){return}
+async function init(){let r0;try{
+  const c=JSON.parse(sessionStorage.getItem('stb_svl')||'null');   // server list cached 20 s per tab: page-to-page navigation costs no request; cleared on any server change, login and logout
+  if(c&&Date.now()-c.t<20000)r0=c.d;else{r0=await api('/api/servers');sessionStorage.setItem('stb_svl',JSON.stringify({t:Date.now(),d:r0}))}
+  LIST=r0.servers;SUPER=!!r0.superAdmin}catch(e){return}
   if(SUPER&&cur()!==DEF&&!LIST.some(x=>x.id===cur())){try{const a=(await api('/api/admin/servers')).servers.find(x=>x.id===cur());if(a)LIST.push({id:a.id,name:a.name,owner:false,via:true,role:'admin',members:a.members.length,createdBy:a.owner,code:a.code,logoAt:a.logoAt})}catch(e){}}   // platform admin viewing a server he is not a member of
-  try{ME=(await api('/api/me')).user}catch(e){}build()}
+  try{ME=(await currentUser()).user}catch(e){}build();paintUn();pollUn()}
 document.readyState==='loading'?document.addEventListener('DOMContentLoaded',init):init();
 window.addEventListener('keydown',e=>{if(e.key==='Escape')close()});
 })();

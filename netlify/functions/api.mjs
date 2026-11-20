@@ -253,6 +253,27 @@ export default async (req) => {
     const dropMember = async (sid, uid) => {   // remove a person's position/role traces from one server's shared tasks + other members' supervisor links
       await mutate(bs, svKey(sid, 'shared'), () => ({ tasks: [] }), sh => sh.tasks.forEach(t => { t.assignees = t.assignees.filter(a => a.id !== uid); t.hostIds = t.hostIds.filter(h => h !== uid); if (!t.assignees.length) t.status = 'trash'; }));
     };
+    // ----- unread chat per server (the badges on the server rail): every server I am in, every channel I can see there (global; ignores X-Server) -----
+    // body.seen = { <serverId>: "ch:ts,ch:ts" } (what this browser has read). A server missing from it was never opened in this browser: nothing is unread yet, and `last` lets the browser record a baseline.
+    if (path === '/servers/unread' && m === 'POST') {
+      const list = await srvList(), sn = body.seen && typeof body.seen === 'object' ? body.seen : {};
+      const svs = [DEF_SV, ...list.filter(x => x.members[meG.id]).map(x => x.id)];
+      const out = {};
+      await Promise.all(svs.map(async sid => {
+        const tagIds = sid === DEF_SV ? (meG.tagIds || []) : (list.find(v => v.id === sid).members[meG.id].tagIds || []);
+        const chans = ((await bs.get(svKey(sid, 'chat:channels'), { type: 'json' })) || [{ id: 'general', name: 'general' }]).filter(c => !c.tag || tagIds.includes(c.tag));   // same rule as the chat itself: role channels only for people holding the role
+        const datas = await Promise.all(chans.map(c => bs.get(svKey(sid, 'chat:' + c.id), { type: 'json' })));
+        const known = typeof sn[sid] === 'string' && sn[sid] ? parseSeen(sn[sid]) : null, last = {};
+        let unread = 0;
+        chans.forEach((c, i) => {
+          const msgs = (datas[i] || { msgs: [] }).msgs;
+          last[c.id] = msgs.at(-1)?.ts || 0;
+          if (known) unread += msgs.filter(x => x.uid !== meG.id && x.ts > (known[c.id] ?? 0)).length;   // a channel created since the browser last looked: all of it is new
+        });
+        out[sid] = { unread: Math.min(99, unread), last };
+      }));
+      return J({ servers: out });
+    }
     if (path === '/servers' && m === 'GET') {
       const list = await srvList();
       const dm = await bs.get('svmeta:cepalco', { type: 'json' });
@@ -742,6 +763,13 @@ export default async (req) => {
       const w = await st.setJSON(key, { ...cleanBoard(body), rev: curRev + 1 }, cur ? { onlyIfMatch: cur.etag } : { onlyIfNew: true });
       if (w && w.modified === false) throw stale();
       return J({ ok: 1, rev: curRev + 1 });
+    }
+
+    if (path === '/theme' && m === 'POST') {   // theme picked from the server menu on any page (does not bump the board revision)
+      const t = String(body.theme || '');
+      if (!THEMES.includes(t)) throw H('Unknown theme');
+      await mutate(st, 'board:' + me.id, () => ({ tasks: [], rev: 0 }), d => { d.theme = t; });
+      return J({ ok: 1 });
     }
 
     // ----- people I can assign tasks to -----

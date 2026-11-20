@@ -501,6 +501,46 @@ console.log('Notifications carry their server');
   check('notif: friend requests are NOT tied to a server', fr && fr.sv === undefined && fr.svName === undefined);
 }
 
+console.log('Theme from the server menu');
+{
+  check('theme: POST /theme saves it to my profile board', (await SS('/theme', 'POST', { theme: 'ocean' })).status === 200 && (await SS('/me')).d.board.theme === 'ocean');
+  const r0 = (await SS('/me')).d.board.rev; await SS('/theme', 'POST', { theme: 'forest' });
+  check('theme: does not bump the board revision (no false 409 on other devices)', (await SS('/me')).d.board.rev === r0);
+  check('theme: unknown theme is rejected', (await SS('/theme', 'POST', { theme: 'neon' })).status === 400);
+  check('theme: needs login', (await browser()('/theme', 'POST', { theme: 'dark' })).status === 401);
+}
+
+console.log('Server rail: unread chat badges');
+{
+  const mk = await SS('/servers', 'POST', { name: 'Badge Crew' });
+  const BID = mk.d.id, bq = '#sv=' + BID;
+  await N('/servers/join', 'POST', { code: mk.d.code });
+  check('unread: needs login', (await browser()('/servers/unread', 'POST', { seen: {} })).status === 401);
+  await SS('/chat/send' + bq, 'POST', { ch: 'general', text: 'first in badge crew' });
+  const r0 = (await N('/servers/unread', 'POST', { seen: {} })).d.servers;
+  check('unread: every server I am in is listed (CEPALCO + the ones I joined), not others', !!r0.cepalco && !!r0[BID] && !(await H2('/servers/unread', 'POST', { seen: {} })).d.servers[BID]);
+  check('unread: a server this browser never opened starts at 0 and hands back a baseline', r0[BID].unread === 0 && r0[BID].last.general > 0);
+  const last = r0[BID].last.general;
+  check('unread: messages after what I have read are counted', (await N('/servers/unread', 'POST', { seen: { [BID]: 'general:0' } })).d.servers[BID].unread === 1);
+  check('unread: nothing is unread once I have read up to the latest', (await N('/servers/unread', 'POST', { seen: { [BID]: 'general:' + last } })).d.servers[BID].unread === 0);
+  check('unread: my own messages never count', (await SS('/servers/unread', 'POST', { seen: { [BID]: 'general:0' } })).d.servers[BID].unread === 0);
+  await SS('/chat/send' + bq, 'POST', { ch: 'general', text: 'second one' });
+  check('unread: a new message raises it again', (await N('/servers/unread', 'POST', { seen: { [BID]: 'general:' + last } })).d.servers[BID].unread === 1);
+  // role channels count only for people holding the role
+  await SS('/tags' + bq, 'POST', { name: 'Secret' });
+  await SS('/tags/secret' + bq, 'PUT', { userIds: [staff2] });
+  check('unread: a role channel is invisible to people without the role', (await SS('/chat/send' + bq, 'POST', { ch: 'secret-chat', text: 'psst' })).status === 201
+    && (await N('/servers/unread', 'POST', { seen: { [BID]: 'general:' + last + ',secret-chat:0' } })).d.servers[BID].unread === 1
+    && (await N('/servers/unread', 'POST', { seen: {} })).d.servers[BID].last['secret-chat'] === undefined);
+  await SS('/tags/secret' + bq, 'PUT', { userIds: [staff2, (await N('/me')).d.user.id] });
+  check('unread: ...and counts once you hold the role (a channel I have never seen is all unread)', (await N('/servers/unread', 'POST', { seen: { [BID]: 'general:' + (await N('/servers/unread', 'POST', { seen: {} })).d.servers[BID].last.general } })).d.servers[BID].unread === 1);
+  check('unread: different servers keep separate read marks for the same channel name', (await N('/servers/unread', 'POST', { seen: { cepalco: 'general:9999999999999', [BID]: 'general:0' } })).d.servers.cepalco.unread === 0);
+  const cl = (await N('/servers/unread', 'POST', { seen: {} })).d.servers.cepalco.last.general;
+  check('unread: CEPALCO counts other people\'s messages, with its own read marks', (await N('/servers/unread', 'POST', { seen: { cepalco: 'general:0' } })).d.servers.cepalco.unread > 0 && (await N('/servers/unread', 'POST', { seen: { cepalco: 'general:' + cl } })).d.servers.cepalco.unread === 0);
+  check('unread: junk input is harmless', (await N('/servers/unread', 'POST', { seen: 'nonsense' })).status === 200 && (await N('/servers/unread', 'POST', { seen: [1, 2] })).status === 200 && (await N('/servers/unread', 'POST', {})).status === 200 && (await N('/servers/unread', 'POST', { seen: { [BID]: 'x:y,,:' } })).status === 200);
+  check('unread: the count is capped at 99', await (async () => { for (let i = 0; i < 3; i++) await SS('/chat/send' + bq, 'POST', { ch: 'general', text: 'm' + i }); return (await N('/servers/unread', 'POST', { seen: { [BID]: 'general:0' } })).d.servers[BID].unread <= 99; })());
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(failed ? `\n${failed} check(s) FAILED` : '\nAll checks passed');
 process.exit(failed ? 1 : 0);

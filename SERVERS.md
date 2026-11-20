@@ -57,3 +57,13 @@ The default admin (`u_admin`) stays Head of **CEPALCO Server** exactly as before
 - The 🔔 button moved from the page header into the server rail (`servers.js`, so it works on every page, with an unread badge). The panel opens next to the rail (bottom sheet on phones).
 - Task notifications (`assigned`, `done`, `all_done`, `closed`) carry `sv` + `svName` and show **(Server name)** after the text (current name from the server list, falling back to the saved one). Friend requests/accepts, post likes and thread replies are global and show **no** server label.
 - Clicking: task → switches to that server's Shared calendar and opens the task's date (`sessionStorage.stb_open`); friend → Friends panel; post → your profile.
+
+## Menu order + Theme (v2.11)
+- Server menu top → bottom: 🔔 Notifications · Servers header · 🗓 Cross-server Calendar · servers · ＋ Add · Friends · 🎨 **Theme** · (Admin) · ⓘ Server info · profile · log out.
+- The Theme picker moved from the calendar header into the menu (`servers.js`, all pages). Index page saves via its board (`window.__cwSetTheme`); other pages call `POST /api/theme {theme}` (no board-revision bump).
+
+## Efficiency pass (v2.12)
+- One `/api/me` per page load (the gate's answer is shared with every script for 5 s); server list cached 20 s per tab (cleared on server changes, login, logout); notifications poll every 90 s and the cross calendar every 120 s, only while the tab is visible.
+
+## Unread badges on server icons
+`POST /api/servers/unread` (global) returns unread chat counts for every server I am in; `servers.js` shows them as red badges on the rail icons (polls every 60 s while visible; the open server is updated live by chat.js via the `cw:unread` event). Read marks are per server: `cw_seen` (CEPALCO) / `cw_seen_<id>`.

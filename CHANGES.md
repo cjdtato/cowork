@@ -1,3 +1,15 @@
+# Unread chat badges on the server icons (Discord style)
+Every server icon in the left rail now shows a red badge with the number of unread chat messages in that server, from **any channel you can see there** (`#general`, other channels, and private role chats such as `billing-chat`). Your own messages never count; role chats count only if you hold the role. The count clears as you read it in the chat; the open server updates instantly, the others refresh about once a minute (only while the tab is visible) and when you return to the tab. Works on every page that has the rail, including the Cross-server Calendar.
+- API: `POST /api/servers/unread` `{seen:{<serverId>:"ch:ts,..."}}` -> `{servers:{<id>:{unread,last:{<ch>:ts}}}}` (global, ignores `X-Server`; one small request a minute per open tab).
+- A server this browser has never opened starts at 0 (what is already there counts as read), so nothing lights up on first use.
+- Fix that came with it: what you have read is now remembered **per server** (`cw_seen` for CEPALCO, `cw_seen_<serverId>` for others). Before, `#general` of every server shared one marker, so reading it in one server could hide new messages in another.
+- Private messages are not tied to a server: they keep their badge on the **Friends** button.
+- Files: `netlify/functions/api.mjs`, `public/servers.js`, `public/chat.js`, `test/smoke.mjs` (+13 checks).
+
+# Friends & chat on the Cross-server Calendar page
+`cross.html` did not load the chat/friends scripts, so the rail's **Friends** button (and "My profile", friend/post notifications) fell back to opening `index.html`, i.e. a server page. The page now loads `chat.css`, `friends.css`, `posts.css`, `chat.js`, `friends.js` and `posts.js` like every other page, so the Friends panel, private-message pop-outs and profile viewer open right there. "My profile" opens the in-place profile viewer (your posts included). Only `public/cross.html` changed.
+The group-chat pill on this page works for the server you last opened, same as on the Users/Overview pages; private messages and friends are not tied to any server.
+
 # v2.7.0
 - Default admin: new Admin entry in the server list (`admin-servers.html`) to view, create, rename, transfer, delete and enter any server as Head. He remains Head of CEPALCO Server.
 - Tests: 14 new checks; 3 old checks updated (the default admin is no longer treated as an outsider).

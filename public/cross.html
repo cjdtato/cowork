@@ -9,6 +9,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=Fredoka:wght@400..700&family=Quicksand:wght@400..700&display=swap" rel="stylesheet">
 <link rel="icon" type="image/svg+xml" href="logo.svg">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="chat.css">
+<link rel="stylesheet" href="friends.css">
+<link rel="stylesheet" href="posts.css">
 <style>
 .xhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .xhead h1{font:700 clamp(1.2rem,4vw,1.6rem) Fredoka,sans-serif;margin:0}
@@ -34,6 +37,11 @@
 <body class="th-white">
 <script src="auth.js"></script>
 <script src="servers.js" defer></script>
+<script src="chat.js" defer></script><script src="friends.js" defer></script><script src="posts.js" defer></script>
+<script>
+/* "My profile" / post notifications from the server rail: open it right here instead of jumping to a server page */
+window.openProfile=async()=>{const d=await currentUser();if(d&&d.user&&window.__cwCore)window.__cwCore.openProfile(d.user.id)};
+</script>
 
 <header class="panel top">
   <div class="brand">
@@ -176,7 +184,7 @@ async function load(){
   if(me.user.avatarAt){const i=new Image();i.alt='';i.src='/api/avatar?v='+me.user.avatarAt;i.onerror=()=>{i.remove();av.textContent=ini};av.append(i)}else av.textContent=ini;
   $('#who').append(av);$('#who').insertAdjacentHTML('beforeend',`<b style="font-size:.85rem">${esc(n)}</b>`);
   renderCal();await load();
-  setInterval(()=>{if(!document.hidden&&!openDate)load()},60000);
+  setInterval(()=>{if(!document.hidden&&!openDate)load()},120000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!openDate)load()});
 })();
 </script>

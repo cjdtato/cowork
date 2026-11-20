@@ -375,7 +375,7 @@ function wireDrag(){
 
 /* ---------- themes ---------- */
 function setTheme(t){P.theme=t;localStorage.setItem('stb_theme',t);applyTheme(t);save()}
-document.querySelectorAll('[data-th]').forEach(b=>b.onclick=()=>{setTheme(b.dataset.th);const tp=document.getElementById('themePop');if(tp)tp.hidden=true;const tb=document.getElementById('themeBtn');if(tb)tb.setAttribute('aria-expanded','false')});
+window.__cwSetTheme=setTheme;   // the server menu's Theme picker calls this on this page (keeps the personal board in sync)
 
 /* ---------- change password ---------- */
 let forced=false;

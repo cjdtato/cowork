@@ -17,13 +17,14 @@
   const POLL = { open: 5000, hot: 2000, minimized: 30000, hidden: 60000 };   // ms between polls: chat open · dock minimized · browser tab in the background
   const HOT_MS = 45000;   // how long after the last message/typing the fast rate stays on
   const GROUPS = [['admin', 'Heads'], ['host', 'Supervisors'], ['staff', 'Staff']];
+  const SEEN_KEY = (localStorage.getItem('stb_sv') || 'cepalco') === 'cepalco' ? 'cw_seen' : 'cw_seen_' + localStorage.getItem('stb_sv');   // what I have read is remembered per server (channel names like #general exist in every server)
 
   /* ---------- state ---------- */
   const S = {
     open: LS.get('cw_open', false), ch: LS.get('cw_ch', 'general'), members: false,
-    me: null, hot: 1e9, avs: {}, channels: [], msgs: [], rev: -1, loaded: false, online: [], offline: 0, seen: LS.get('cw_seen', {}),
+    me: null, hot: 1e9, avs: {}, channels: [], msgs: [], rev: -1, loaded: false, online: [], offline: 0, seen: LS.get(SEEN_KEY, {}),
     edit: null, pos: LS.get('cw_pos', null), lastType: 0, err: false,
-    fresh: localStorage.getItem('cw_seen') === null,   // brand-new browser: existing messages start as "read"
+    fresh: localStorage.getItem(SEEN_KEY) === null,   // brand-new browser: existing messages start as "read"
   };
   let busy = false, fails = 0, timer = 0, sending = false, noteT = 0, drag = null, sigM = '', sigC = '';
 
@@ -126,6 +127,7 @@
   function renderPill() {
     const n = S.channels.reduce((a, c) => a + unreadOf(c), 0), b = $('#cwBadge'), l = $('#cwLive');
     b.hidden = !n; b.textContent = n > 99 ? '99+' : n;
+    window.dispatchEvent(new CustomEvent('cw:unread', { detail: { n } }));   // the server rail shows the same count on this server's icon
     $('#cwPill').setAttribute('aria-label', 'Open group chat' + (n ? ', ' + n + ' unread' : ''));
     l.hidden = !S.me; l.innerHTML = `<i class="cw-dot"></i>${S.online.length}`; l.title = S.online.length + ' online';
   }
@@ -280,7 +282,7 @@
       const c = d.channels.find(x => x.id === S.ch);
       if (c && S.seen[c.id] !== c.last) { S.seen[c.id] = c.last; }
     }
-    LS.set('cw_seen', S.seen);
+    LS.set(SEEN_KEY, S.seen);
     try { if (window.__cwF) window.__cwF.apply(d); } catch (e) { console.error(e); }   // friends + private messages ride on the same poll
     renderAll();
   }
