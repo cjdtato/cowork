@@ -38,13 +38,10 @@
     <span class="stat who-tag" id="who"></span>
     <a class="mini" id="usersLink" href="users.html" hidden>Users</a>
     <span class="starwrap" id="starWrap" hidden><button class="mini star" id="starBtn" aria-label="All users' sticky notes" aria-haspopup="true" aria-expanded="false" title="">★</button><div class="starpop" id="starPop" hidden><a class="btn pri" href="overview.html">⭐ Open all users' sticky notes ↗</a></div></span>
-    <button class="mini" id="profBtn">Profile</button>
-    <button class="mini" id="acctBtn">Password</button>
     <span class="themebox" id="themeBox">
       <button class="mini" id="themeBtn" aria-haspopup="true" aria-expanded="false" aria-controls="themePop"><i class="dotc" style="--a:var(--acc);--b:var(--bg)"></i>Theme</button>
       <div class="themepop" id="themePop" role="group" aria-label="Theme" hidden><h5>Theme</h5><div class="themegrid"><button class="swopt" data-th="white" aria-pressed="false"><i class="dotc" style="--a:#6366f1;--b:#f6f7f9"></i>Classic</button><button class="swopt" data-th="dark" aria-pressed="false"><i class="dotc" style="--a:#10b981;--b:#0b0f19"></i>Dark</button><button class="swopt" data-th="midnight" aria-pressed="false"><i class="dotc" style="--a:#818cf8;--b:#0f1020"></i>Midnight</button><button class="swopt" data-th="graphite" aria-pressed="false"><i class="dotc" style="--a:#e5e5e5;--b:#121212"></i>Graphite</button><button class="swopt" data-th="ocean" aria-pressed="false"><i class="dotc" style="--a:#0284c7;--b:#eef6fb"></i>Ocean</button><button class="swopt" data-th="forest" aria-pressed="false"><i class="dotc" style="--a:#2f855a;--b:#f1f5ee"></i>Forest</button><button class="swopt" data-th="lavender" aria-pressed="false"><i class="dotc" style="--a:#7c3aed;--b:#f5f3ff"></i>Lavender</button><button class="swopt" data-th="sunset" aria-pressed="false"><i class="dotc" style="--a:#ea580c;--b:#fff7ed"></i>Sunset</button><button class="swopt" data-th="sand" aria-pressed="false"><i class="dotc" style="--a:#92400e;--b:#f5f1e8"></i>Sand</button><button class="swopt" data-th="pink" aria-pressed="false"><i class="dotc" style="--a:#e11d48;--b:#fff1f2"></i>Pink</button><button class="swopt" data-th="cepalco" aria-pressed="false"><i class="dotc" style="--a:#000000;--b:#facc15"></i>CEPALCO</button></div></div>
     </span>
-    <button class="mini" onclick="logout()">Log out</button>
   </div>
   <div class="stats">
     <div class="stat"><b id="sActive">0</b>Active</div>
@@ -122,6 +119,7 @@
     <label class="repck" id="hideRow"><input type="checkbox" id="hideProf"> Hide my profile from other users <span class="sub">(they see only your name and role)</span></label>
     <input id="avFile" type="file" accept="image/jpeg,image/png,image/webp" hidden>
     <div class="row">
+      <button class="btn" type="button" id="acctBtn">🔑 Change password</button>
       <button class="btn" type="button" id="avPick">📷 Choose photo</button>
       <button class="btn pri" type="button" id="avSave" disabled>Save photo</button>
     </div>

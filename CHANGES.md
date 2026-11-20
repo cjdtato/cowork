@@ -1,3 +1,7 @@
+# v2.7.0
+- Default admin: new Admin entry in the server list (`admin-servers.html`) to view, create, rename, transfer, delete and enter any server as Head. He remains Head of CEPALCO Server.
+- Tests: 14 new checks; 3 old checks updated (the default admin is no longer treated as an outsider).
+
 # v2.6.0 — Servers
 New: CEPALCO Server (default) + user-created servers; left hover rail (`public/servers.js`); per-server roles, positions, chat and shared tasks; `X-Server` header; `/api/servers*` routes. No migration. See `SERVERS.md`.
 

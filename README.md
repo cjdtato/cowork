@@ -41,8 +41,8 @@ netlify dev
 ```
 npm test
 ```
-Runs 134 checks against the real API with an in-memory stand-in for Netlify Blobs (no network, no extra dependencies).
-See `IMPROVEMENTS.md` for the review, the logout fix, and what changed in v2.2.
+Runs 223 checks against the real API with an in-memory stand-in for Netlify Blobs (no network, no extra dependencies).
+See `IMPROVEMENTS.md` for the review, the logout fix, and earlier fixes (see `CHANGES.md` for v2.6).
 
 ## Custom roles & private role chats
 Besides Head / Supervisor / Staff, a Head can create any number of **custom roles** (e.g. `DSD`) on the **Users** page and give them to as many people as they like.

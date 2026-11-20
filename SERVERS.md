@@ -1,4 +1,4 @@
-# Co-Work v2.6 — Servers (Discord-style) · handoff notes
+# Co-Work v2.7 — Servers (Discord-style) · handoff notes
 
 ## Model
 - **Server = namespace** for: custom roles (tags, e.g. COLLECTION/BILLING → private `<role>-chat`), chat channels+messages, shared-calendar tasks, and **positions** (admin=Head / host=Supervisor / staff).
@@ -31,3 +31,12 @@
 
 ## Tests
 `npm test` → all original checks + new server checks (isolation of chat/roles/tasks, join/leave/delete, permissions).
+
+## Platform admin (v2.7)
+The default admin (`u_admin`) stays Head of **CEPALCO Server** exactly as before, and is now also the platform admin.
+- Left rail → **🛡 Admin** (default admin only) → `admin-servers.html`: every server with owner, created date, invite code, people + positions + roles, channels, task count.
+- Actions per server: **Open** (enter it as Head), **Manage people & roles** (Users page of that server), rename, new invite code, **make owner** (transfer), **delete**; plus **Create a server** for any user (they become Head + owner). This also rescues servers whose owner account was deleted.
+- API (default admin only, else 403): `GET /admin/servers` · `POST /admin/servers {name, owner?}` · `PUT /admin/servers/<id>/owner {userId}`. `/servers` returns `superAdmin`, `/me` returns `user.superAdmin`.
+- `X-Server` for the default admin may be ANY server without being a member: he acts as Head there (all existing chat/calendar/roles/users routes work) and is not listed as a member. Rename / new code / delete of any server also allowed for him. Everyone else is unchanged (members only; delete = owner only).
+- Role channels (`<role>-chat`) are private to holders; the platform admin sees them only if he adds himself to the server and takes the role.
+- Still open: deleting an account does not clean its tasks in user servers (shows "Deleted user").

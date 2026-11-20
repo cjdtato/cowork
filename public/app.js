@@ -380,7 +380,7 @@ document.querySelectorAll('[data-th]').forEach(b=>b.onclick=()=>{setTheme(b.data
 /* ---------- change password ---------- */
 let forced=false;
 function openAcct(f){forced=!!f;$('#acctF').reset();$('#cpX').hidden=forced;$('#acctNote').textContent=forced?'An admin set a temporary password. Please choose your own to continue.':'Use at least 8 characters.';$('#acct').hidden=false;$('#cp0').focus()}
-$('#acctBtn').onclick=()=>openAcct(false);
+$('#acctBtn').onclick=()=>{$('#prof').hidden=true;openAcct(false)};
 $('#cpX').onclick=()=>{$('#acct').hidden=true};
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!forced&&!$('#acct').hidden)$('#acct').hidden=true});
 $('#acctF').onsubmit=async e=>{
@@ -409,7 +409,7 @@ function renderProf(){
   const big=$('#avBig');big.innerHTML='';
   if(newPic){const i=new Image();i.alt='New photo preview';i.src=newPic;big.append(i)}else big.append(avatarEl('lg'));
   $('#profName').textContent=ME.name||ME.username;
-  $('#profSub').textContent='@'+ME.username+' · '+ROLE[ME.role];
+  $('#profSub').textContent='@'+ME.username;   // profile is global: no server-specific role here
   const left=ME.avatarAt?ME.avatarNext-Date.now():0,locked=left>0;
   $('#avPick').disabled=locked;
   $('#avSave').disabled=locked||!newPic;
@@ -420,7 +420,8 @@ function renderProf(){
 let myPosts=null;
 function openProf(){$('#hideProf').checked=!!ME.profileHidden;newPic=null;$('#avFile').value='';renderProf();$('#prof').hidden=false;
   if(myPosts)myPosts.destroy();myPosts=window.__cwP?window.__cwP.mount($('#profPosts'),ME.id,{focusReply:false}):null}   // posts.js (Threads-style posts on your profile)
-$('#profBtn').onclick=openProf;
+window.openProfile=openProf;   // called from the server rail (servers.js)
+if(/[?&]profile=1/.test(location.search)){history.replaceState(null,'',location.pathname);let n=0;const t=setInterval(()=>{if(ME.id||++n>50){clearInterval(t);if(ME.id)openProf()}},100)}
 $('#hideProf').onchange=async e=>{
   const want=e.target.checked;e.target.disabled=true;
   try{const r=await api('/api/profile-visibility','POST',{hidden:want});ME.profileHidden=r.profileHidden;toast(want?'Profile hidden from other users':'Profile visible to other users')}

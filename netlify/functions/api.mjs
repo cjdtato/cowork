@@ -118,7 +118,7 @@ const pub = (u, all) => ({
   hostNames: u.role === 'staff' ? u.hostIds.map(id => all.find(x => x.id === id)?.name).filter(Boolean) : [],
 });
 // A person who set their profile to "hidden for viewing" shows only their name and role to others; Heads (admins) and the person themself still see everything.
-const canSee = (u, me) => !u.profileHidden || u.id === me.id || me.role === 'admin';
+const canSee = (u, me, inSrv = true) => !u.profileHidden || u.id === me.id || (me.role === 'admin' && inSrv);   // Heads see hidden profiles only of people in their own server (profiles themselves are global)
 const avAt = (u, me) => (u && u.avatarAt && canSee(u, me) ? u.avatarAt : 0);
 const activeAdmins = us => us.filter(u => u.role === 'admin' && u.active).length;
 
@@ -235,6 +235,7 @@ export default async (req) => {
     const meG = allUs.find(x => x.id === sess.id && x.active);
     if (!meG || (sess.pv || 0) !== meG.pv) throw H('Not logged in', 401);   // disabled user, or password changed/reset since this login
 
+    const isSuper = meG.id === DEFAULT_ADMIN;   // the default admin is also the platform admin: sees and manages every server (Admin page)
     // ----- servers registry (global, works whatever X-Server says) -----
     const srvList = async () => (await st.get('servers', { type: 'json' })) || [];
     const mutSrv = fn => mutate(st, 'servers', () => [], fn);
@@ -246,7 +247,7 @@ export default async (req) => {
       const list = await srvList();
       const def = { id: DEF_SV, name: SV_NAME, owner: meG.id === DEFAULT_ADMIN, role: meG.role, members: allUs.filter(u => u.active).length, createdBy: allUs.find(u => u.id === DEFAULT_ADMIN)?.name || 'Administrator', isDefault: true };
       const mine = list.filter(x => x.members[meG.id]).map(x => ({ id: x.id, name: x.name, owner: x.ownerId === meG.id, role: x.members[meG.id].role, members: Object.keys(x.members).length, createdBy: allUs.find(u => u.id === x.ownerId)?.name || 'Unknown', ...(x.members[meG.id].role === 'admin' ? { code: x.code } : {}) }));
-      return J({ servers: [def, ...mine] });
+      return J({ servers: [def, ...mine], superAdmin: isSuper });
     }
     if (path === '/servers' && m === 'POST') {
       const name = svName(body.name);
@@ -274,11 +275,11 @@ export default async (req) => {
       const sid = svm[1], act = svm[2];
       if (!act && m === 'PUT') {   // rename (server Head)
         const name = svName(body.name);
-        await mutSrv(list => { const x = list.find(v => v.id === sid); if (!x || x.members[meG.id]?.role !== 'admin') throw H('Only a server Head can rename it.', 403); x.name = name; });
+        await mutSrv(list => { const x = list.find(v => v.id === sid); if (!x || (x.members[meG.id]?.role !== 'admin' && !isSuper)) throw H('Only a server Head can rename it.', 403); x.name = name; });
         return J({ ok: 1 });
       }
       if (act === 'invite' && m === 'POST') {   // new invite code (server Head)
-        const code = await mutSrv(list => { const x = list.find(v => v.id === sid); if (!x || x.members[meG.id]?.role !== 'admin') throw H('Only a server Head can do that.', 403); return (x.code = newCode()); });
+        const code = await mutSrv(list => { const x = list.find(v => v.id === sid); if (!x || (x.members[meG.id]?.role !== 'admin' && !isSuper)) throw H('Only a server Head can do that.', 403); return (x.code = newCode()); });
         return J({ code });
       }
       if (act === 'leave' && m === 'POST') {
@@ -295,7 +296,7 @@ export default async (req) => {
         let gone;
         await mutSrv(list => {
           const i = list.findIndex(v => v.id === sid); if (i < 0) throw H('Server not found', 404);
-          if (list[i].ownerId !== meG.id) throw H('Only the server owner can delete it.', 403);
+          if (list[i].ownerId !== meG.id && !isSuper) throw H('Only the server owner can delete it.', 403);
           gone = list.splice(i, 1)[0];
         });
         const chans = (await bs.get(svKey(sid, 'chat:channels'), { type: 'json' })) || [];
@@ -304,20 +305,59 @@ export default async (req) => {
       }
     }
 
+
+    // ----- platform admin (default admin only): every server, its people and contents; create / transfer / delete -----
+    if (path.startsWith('/admin/')) {
+      if (!isSuper) throw H('Not allowed', 403);
+      const nameOf = id => allUs.find(u => u.id === id)?.name || allUs.find(u => u.id === id)?.username || null;
+      const detail = async x => {
+        const [tags, chans, sh] = await Promise.all(['tags', 'chat:channels', 'shared'].map(k => bs.get(svKey(x.id, k), { type: 'json' })));
+        const tg = tags || [], mem = x.members || {};
+        return { id: x.id, name: x.name, created: x.created, code: x.code, ownerId: x.ownerId, owner: nameOf(x.ownerId) || 'Unknown (account deleted)',
+          roles: tg.map(t => t.name), channels: (chans || [{ id: 'general', name: 'general' }]).filter(c => !c.tag).map(c => c.name), tasks: (sh?.tasks || []).length,
+          members: Object.entries(mem).map(([id, v]) => ({ id, name: nameOf(id) || 'Deleted user', username: allUs.find(u => u.id === id)?.username || '', role: v.role, roles: (v.tagIds || []).map(t => tg.find(g => g.id === t)?.name).filter(Boolean) })) };
+      };
+      if (path === '/admin/servers' && m === 'GET') {
+        const [tg, ch, sh] = await Promise.all(['tags', 'chat:channels', 'shared'].map(k => bs.get(k, { type: 'json' })));
+        const def = { id: DEF_SV, name: SV_NAME, isDefault: true, created: '', ownerId: DEFAULT_ADMIN, owner: nameOf(DEFAULT_ADMIN) || 'Administrator', roles: (tg || []).map(t => t.name), channels: (ch || [{ id: 'general', name: 'general' }]).filter(c => !c.tag).map(c => c.name), tasks: (sh?.tasks || []).length,
+          members: allUs.filter(u => u.active).map(u => ({ id: u.id, name: u.name || u.username, username: u.username, role: u.role, roles: (u.tagIds || []).map(t => (tg || []).find(g => g.id === t)?.name).filter(Boolean) })) };
+        return J({ servers: [def, ...(await Promise.all((await srvList()).map(detail)))] });
+      }
+      if (path === '/admin/servers' && m === 'POST') {   // create a server for anyone (default: for yourself)
+        const name = svName(body.name), un = String(body.owner || '').trim().toLowerCase();
+        const own = un ? allUs.find(u => u.username === un && u.active) : meG;
+        if (!own) throw H('No active account with that username.', 404);
+        const out = await mutSrv(list => { const x = { id: 's_' + randomBytes(4).toString('hex'), name, ownerId: own.id, created: today(), code: newCode(), members: { [own.id]: { role: 'admin', hostIds: [], tagIds: [] } } }; list.push(x); return x; });
+        return J({ id: out.id, name: out.name, code: out.code }, 201);
+      }
+      const ao = path.match(/^\/admin\/servers\/(s_[a-f0-9]{8})\/owner$/);
+      if (ao && m === 'PUT') {   // hand a server to another account (made Head if needed)
+        const acc = allUs.find(u => u.id === body.userId && u.active);
+        if (!acc) throw H('No active account with that id.', 404);
+        await mutSrv(list => {
+          const x = list.find(v => v.id === ao[1]); if (!x) throw H('Server not found', 404);
+          if (Object.keys(x.members).length >= MAX_MEM && !x.members[acc.id]) throw H('That server is full.');
+          x.members[acc.id] = { hostIds: [], tagIds: [], ...x.members[acc.id], role: 'admin' }; x.ownerId = acc.id;
+        });
+        return J({ ok: 1 });
+      }
+      throw H('Not found', 404);
+    }
+
     // ----- pick the active server: X-Server header (default = CEPALCO). 'us' = the people of THIS server with their server position/roles -----
     let us = allUs;
     const want = req.headers.get('x-server') || DEF_SV;
     if (want !== DEF_SV) {
       const x = SV_ID.test(want) ? (await srvList()).find(v => v.id === want) : null;
-      if (!x || !x.members[meG.id]) throw H('You are not a member of that server.', 403);
+      if (!x || !(x.members[meG.id] || isSuper)) throw H('You are not a member of that server.', 403);
       SV = want;
       us = allUs.filter(u => u.active && x.members[u.id]).map(u => { const mm = x.members[u.id]; return { ...u, role: mm.role, hostIds: mm.role === 'staff' ? mm.hostIds : [], tagIds: mm.tagIds }; });
     }
-    const me = us.find(u => u.id === meG.id);
+    const me = us.find(u => u.id === meG.id) || (isSuper && SV !== DEF_SV ? { ...meG, role: 'admin', hostIds: [], tagIds: [] } : null);   // platform admin inside a server he is not a member of: acts as Head, is not listed as a member
     if (!me) throw H('You are not a member of that server.', 403);
     const nameUs = us.concat(allUs.filter(g => !us.some(u => u.id === g.id)));   // server people first, then anyone else (old chat senders, friends)
 
-    if (path === '/me' && m === 'GET') return J({ user: { ...pub(me, us), overview: me.id === DEFAULT_ADMIN && SV === DEF_SV }, server: { id: SV, name: SV === DEF_SV ? SV_NAME : (await srvList()).find(v => v.id === SV)?.name }, board: await st.get('board:' + me.id, { type: 'json' }) });
+    if (path === '/me' && m === 'GET') return J({ user: { ...pub(me, us), overview: me.id === DEFAULT_ADMIN && SV === DEF_SV, superAdmin: isSuper }, server: { id: SV, name: SV === DEF_SV ? SV_NAME : (await srvList()).find(v => v.id === SV)?.name }, board: await st.get('board:' + me.id, { type: 'json' }) });
 
     if (path === '/change-password' && m === 'POST') {
       const cur = String(body.currentPassword || ''), next = String(body.newPassword || '');
@@ -368,12 +408,9 @@ export default async (req) => {
       if (!t || (!t.active && me.role !== 'admin')) throw H('Profile not found', 404);
       const pr = t.id === me.id ? { t: Date.now() } : await st.get('pres:' + t.id, { type: 'json' });
       const online = !!pr && Date.now() - pr.t < ONLINE_MS;
-      const base = { id: t.id, name: t.name || t.username, role: t.role, online, mine: t.id === me.id, hiddenByUser: !!t.profileHidden, friend: t.id === me.id ? 'self' : frState(await frGet(st, me.id), t.id) };
-      if (!canSee(t, me)) return J({ ...base, hidden: true });
-      const tags = await tagsRaw(st);
-      return J({ ...base, hidden: false, username: t.username, avatarAt: t.avatarAt || 0, created: t.created || 0, lastSeen: pr ? pr.t : 0,
-        tagNames: (t.tagIds || []).map(id => tags.find(x => x.id === id)?.name).filter(Boolean),
-        hostNames: t.role === 'staff' ? t.hostIds.map(id => nameUs.find(x => x.id === id)?.name).filter(Boolean) : [] });
+      const base = { id: t.id, name: t.name || t.username, online, mine: t.id === me.id, hiddenByUser: !!t.profileHidden, friend: t.id === me.id ? 'self' : frState(await frGet(st, me.id), t.id) };   // no server role/tags: a profile belongs to the person, not to a server
+      if (!canSee(t, me, us.some(x => x.id === t.id))) return J({ ...base, hidden: true });
+      return J({ ...base, hidden: false, username: t.username, avatarAt: t.avatarAt || 0, created: t.created || 0, lastSeen: pr ? pr.t : 0 });
     }
 
     // ----- profile posts (Threads style): short text posts on your profile, with likes and replies -----
@@ -384,7 +421,7 @@ export default async (req) => {
     const postOwner = id => {   // the person whose profile the post lives on: must exist and be viewable by me
       const t = nameUs.find(x => x.id === id);
       if (!t || (!t.active && me.role !== 'admin')) throw H('Profile not found', 404);
-      if (!canSee(t, me)) throw H('This profile is hidden.', 403);
+      if (!canSee(t, me, us.some(x => x.id === t.id))) throw H('This profile is hidden.', 403);
       return t;
     };
     const snip = s => s.length > 60 ? s.slice(0, 57) + '…' : s;
@@ -409,7 +446,7 @@ export default async (req) => {
     if (pm1 && m === 'GET') {
       const t = nameUs.find(x => x.id === pm1[1]);
       if (!t || (!t.active && me.role !== 'admin')) throw H('Profile not found', 404);
-      if (!canSee(t, me)) return J({ hidden: true, mine: false, posts: [] });
+      if (!canSee(t, me, us.some(x => x.id === t.id))) return J({ hidden: true, mine: false, posts: [] });
       return J({ hidden: false, mine: t.id === me.id, max: POST_MAX, replyMax: REPLY_MAX, posts: (await postsGet(t.id)).items.map(p => postDTO(p, t)) });
     }
     if (pm2 && m === 'DELETE') {
@@ -457,7 +494,7 @@ export default async (req) => {
     }
 
     // ----- friends (requests, accept, unfriend) -----
-    const fcard = u => ({ id: u.id, name: u.name || u.username, role: u.role, avatarAt: avAt(u, me) });
+    const fcard = u => ({ id: u.id, name: u.name || u.username, avatarAt: avAt(u, me) });
     if (path === '/friends' && m === 'GET') {
       const f = await frGet(st, me.id);
       const pick = ids => ids.map(id => allUs.find(u => u.id === id && u.active)).filter(Boolean).map(fcard);

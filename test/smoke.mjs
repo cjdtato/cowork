@@ -233,7 +233,7 @@ check('profile: unknown id is 404', (await V('/profile/nope')).status === 404);
 check('profile: hiding needs login', (await browser()('/profile-visibility', 'POST', { hidden: true })).status === 401);
 check('profile: a user can hide their own profile', (await SS('/profile-visibility', 'POST', { hidden: true })).d.profileHidden === true && (await SS('/me')).d.user.profileHidden === true);
 const hv = await V('/profile/' + staff2);
-check('profile: others then see only name + role', hv.d.hidden === true && hv.d.name && hv.d.role && !hv.d.username && !hv.d.lastSeen && !('avatarAt' in hv.d));
+check('profile: others then see only the name', hv.d.hidden === true && hv.d.name && !hv.d.role && !hv.d.username && !hv.d.lastSeen && !('avatarAt' in hv.d));
 check('profile: the owner still sees their own full profile', (await SS('/profile/' + staff2)).d.hidden === false);
 check('profile: a Head can still see a hidden profile', (await N('/profile/' + staff2)).d.hidden === false);
 check('profile: hidden photo is not served to others', (await V('/avatar/' + staff2)).status === 404);
@@ -379,12 +379,17 @@ console.log('Servers');
   check('servers: bad name is rejected', (await SS('/servers', 'POST', { name: 'x' })).status === 400);
   const me = (await SS('/me' + q)).d;
   check('servers: creator is Head of their server', me.user.role === 'admin' && me.server.name === 'Billing Crew' && me.user.overview === false);
-  check('servers: non-members get 403', (await N('/me' + q)).status === 403 && (await N('/chat#sv=s_00000000')).status === 403);
+  check('servers: non-members get 403 (the platform admin is the one exception, see below)', (await H2('/me' + q)).status === 403 && (await H2('/chat' + q)).status === 403 && (await N('/chat#sv=s_00000000')).status === 403);
   check('servers: invalid invite code is 404', (await N('/servers/join', 'POST', { code: 'ZZZZZZZZ' })).status === 404);
   check('servers: join by invite code makes you Staff', (await N('/servers/join', 'POST', { code: CODE.toLowerCase() })).status === 200 && (await N('/me' + q)).d.user.role === 'staff');
   check('servers: joining twice is refused', (await N('/servers/join', 'POST', { code: CODE })).status === 400);
   check('servers: a server Staff cannot manage members', (await N('/users' + q, 'POST', { username: 'staff2' })).status === 403);
   check('servers: only the Head sees the invite code', (await SS('/servers')).d.servers.find(x => x.id === SID).code === CODE && (await N('/servers')).d.servers.find(x => x.id === SID).code === undefined);
+  // friends, DMs and profiles are NOT bound to a server: head2 is a friend of staff2 but is not in this server
+  await SS('/friends/request', 'POST', { userId: head2 }); await H2('/friends/accept', 'POST', { userId: staff2 });
+  check('servers: friend outside the server is still a friend', (await SS('/friends' + q)).d.friends.some(f => f.id === head2));
+  check('servers: can still view a friend\'s profile from another server (no server role leaked)', await (async () => { const r = await SS('/profile/' + head2 + q); return r.status === 200 && r.d.id === head2 && r.d.role === undefined && r.d.tagNames === undefined; })());
+  check('servers: can still PM a friend who is not in the server', (await SS('/dm/send' + q, 'POST', { to: head2, text: 'hello from another server' })).status === 201);
   // roles + positions are per server
   check('servers: custom roles are per server', (await SS('/tags' + q, 'POST', { name: 'Billing' })).status === 201 && (await SS('/tags' + q)).d.tags.length === 1 && !(await N('/tags')).d.tags.some(t => t.id === 'billing'));
   const adminId = (await N('/me')).d.user.id;
@@ -402,10 +407,31 @@ console.log('Servers');
   check('servers: unknown username is 404', (await SS('/users' + q, 'POST', { username: 'nobody-here' })).status === 404);
   check('servers: backup is blocked inside a user server', (await SS('/backup' + q)).status === 403);
   check('servers: rename + new invite code', (await SS('/servers/' + SID, 'PUT', { name: 'Billing Team' })).status === 200 && (await SS('/servers/' + SID + '/invite', 'POST')).d.code !== CODE);
-  check('servers: owner cannot leave, member can', (await SS('/servers/' + SID + '/leave', 'POST')).status === 400 && (await N('/servers/' + SID + '/leave', 'POST')).status === 200 && (await N('/me' + q)).status === 403);
+  check('servers: owner cannot leave, member can', (await SS('/servers/' + SID + '/leave', 'POST')).status === 400 && (await N('/servers/' + SID + '/leave', 'POST')).status === 200 && !(await N('/servers')).d.servers.some(x => x.id === SID));
   check('servers: Head removes a member', (await SS('/users/' + (await SS('/users' + q)).d.users.find(u => u.username === 'svguy').id + q, 'DELETE')).status === 200);
-  check('servers: only the owner can delete the server', (await N('/servers/' + SID, 'DELETE')).status === 403 && (await SS('/servers/' + SID, 'DELETE')).status === 200);
+  check('servers: only the owner (or the platform admin) can delete the server', (await H2('/servers/' + SID, 'DELETE')).status === 403 && (await SS('/servers/' + SID, 'DELETE')).status === 200);
   check('servers: deleted server is gone', (await SS('/me' + q)).status === 403 && !(await SS('/servers')).d.servers.some(x => x.id === SID));
+}
+
+console.log('Platform admin (default admin)');
+{
+  const mk = await SS('/servers', 'POST', { name: 'Staff Own Server' }), SID = mk.d.id, q = '#sv=' + SID;
+  const staff2Id = (await SS('/me')).d.user.id;
+  check('admin: only the default admin sees the Admin entry', (await N('/servers')).d.superAdmin === true && (await SS('/servers')).d.superAdmin === false);
+  check('admin: a normal user cannot use /admin routes', (await SS('/admin/servers')).status === 403 && (await SS('/admin/servers', 'POST', { name: 'Nope' })).status === 403);
+  const all = (await N('/admin/servers')).d.servers, sv = all.find(x => x.id === SID);
+  check('admin: lists CEPALCO first, then every user server with owner + members', all[0].id === 'cepalco' && all[0].isDefault && sv && sv.owner && sv.members.length === 1 && sv.members[0].role === 'admin' && sv.code.length === 8);
+  check('admin: default admin is NOT a member but can enter any server as Head', !(await N('/servers')).d.servers.some(x => x.id === SID) && (await N('/me' + q)).d.user.role === 'admin' && (await N('/me' + q)).d.user.superAdmin === true);
+  check('admin: he is not listed in that server\'s people', !(await N('/users' + q)).d.users.some(u => u.username === 'admin'));
+  check('admin: can create roles, channels and members there', (await N('/tags' + q, 'POST', { name: 'Audit' })).status === 201 && (await N('/chat/channels' + q, 'POST', { name: 'ops' })).status === 201 && (await N('/users' + q, 'POST', { username: 'svguy', role: 'host' })).status === 200);
+  check('admin: can change a member\'s position and remove them', await (async () => { const id = (await N('/users' + q)).d.users.find(u => u.username === 'svguy').id; return (await N('/users/' + id + q, 'PUT', { role: 'staff' })).status === 200 && (await N('/users/' + id + q, 'DELETE')).status === 200; })());
+  check('admin: his CEPALCO position is untouched', (await N('/me')).d.user.role === 'admin' && (await N('/me')).d.user.overview === true);
+  check('admin: can rename and re-code any server', (await N('/servers/' + SID, 'PUT', { name: 'Renamed By Admin' })).status === 200 && (await N('/servers/' + SID + '/invite', 'POST')).status === 200 && (await N('/admin/servers')).d.servers.find(x => x.id === SID).name === 'Renamed By Admin');
+  const mk2 = await N('/admin/servers', 'POST', { name: 'Made By Admin', owner: 'staff2' });
+  check('admin: can create a server for another user (they become Head + owner)', mk2.status === 201 && (await SS('/me#sv=' + mk2.d.id)).d.user.role === 'admin' && (await N('/admin/servers', 'POST', { name: 'X1', owner: 'nobody-here' })).status === 404);
+  check('admin: can transfer ownership (orphan fix)', (await N('/admin/servers/' + mk2.d.id + '/owner', 'PUT', { userId: 'u_admin' })).status === 200 && (await N('/admin/servers')).d.servers.find(x => x.id === mk2.d.id).owner !== 'Unknown');
+  check('admin: can delete any server (not only his own)', (await N('/servers/' + mk2.d.id, 'DELETE')).status === 200 && (await N('/servers/' + SID, 'DELETE')).status === 200 && !(await N('/admin/servers')).d.servers.some(x => x.id === SID || x.id === mk2.d.id));
+  check('admin: another Head (not the default admin) still cannot enter or delete someone else\'s server', (await SS('/servers', 'POST', { name: 'Private' })).status === 201 && await (async () => { const o = (await SS('/servers')).d.servers.find(x => x.name === 'Private').id; return (await H2('/me#sv=' + o)).status === 403 && (await H2('/servers/' + o, 'DELETE')).status === 403; })());
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

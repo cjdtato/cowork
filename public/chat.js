@@ -79,7 +79,7 @@
     if (at) { const i = new Image(); i.alt = ''; i.onload = () => { d.textContent = ''; d.append(i); }; i.src = '/api/avatar/' + encodeURIComponent(u.id) + '?v=' + at; }
     return d;
   }
-  /* ---------- profile viewer (anyone, online or offline; hidden profiles show name + role only) ---------- */
+  /* ---------- profile viewer (anyone, online or offline; hidden profiles show the name only) ---------- */
   const RL = { admin: 'Head', host: 'Supervisor', staff: 'Staff' };
   const ago = ts => { const s = Math.max(0, (Date.now() - ts) / 1000); if (s < 90) return 'just now'; const m = s / 60; if (m < 60) return Math.round(m) + ' min ago'; const h = m / 60; if (h < 24) return Math.round(h) + ' h ago'; return Math.round(h / 24) + ' day(s) ago'; };
   const pdate = v => /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(v + 'T00:00:00+08:00').toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' }) : '';
@@ -102,15 +102,13 @@
     else {
       rows += `<dl class="pv-dl"><dt>Username</dt><dd>@${esc(d.username)}</dd>`;
       if (!d.online && d.lastSeen) rows += `<dt>Last seen</dt><dd>${ago(d.lastSeen)}</dd>`;
-      if (d.tagNames.length) rows += `<dt>Roles</dt><dd>${d.tagNames.map(esc).join(', ')}</dd>`;
-      if (d.hostNames.length) rows += `<dt>Reports to</dt><dd>${d.hostNames.map(esc).join(', ')}</dd>`;
       if (pdate(d.created)) rows += `<dt>Member since</dt><dd>${pdate(d.created)}</dd>`;
       rows += '</dl>';
     }
     if (d.hiddenByUser && (d.mine || !d.hidden)) rows += `<p class="sub pv-hid">${d.mine ? 'Your profile is hidden from others.' : '🔒 Hidden from other users (you can see it as a Head).'}</p>`;
     const card = pv.firstChild; card.innerHTML = '';
     const pc = document.createElement('div'); pc.className = 'profcard'; pc.append(big);
-    pc.insertAdjacentHTML('beforeend', `<b>${esc(d.name)}${d.mine ? ' <span class="cw-you">you</span>' : ''}</b><span class="sub">${RL[d.role] || ''}</span>${status}`);
+    pc.insertAdjacentHTML('beforeend', `<b>${esc(d.name)}${d.mine ? ' <span class="cw-you">you</span>' : ''}</b>${status}`);
     card.append(pc); card.insertAdjacentHTML('beforeend', rows);
     if (window.__cwF && !d.mine && d.friend) card.append(window.__cwF.profileRow(d.id, d.friend, { reload: () => openProfile(id), close: closeProfile }));   // Add friend / Accept / Message ... (friends.js)
     if (!d.hidden && window.__cwP) { const ph = document.createElement('div'); card.append(ph); window.__cwP.mount(ph, d.id, { focusReply: false }); }   // Threads-style posts (posts.js)

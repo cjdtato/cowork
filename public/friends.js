@@ -119,7 +119,7 @@
       if (!F.loaded) empty('Loading…');
       else if (!l.length) empty(F.friends.length ? 'No friend matches that name.' : 'No friends yet. Open "Find people" to add teammates.');
       l.forEach(f => {
-        const un = unreadOf(f), r = row(f, { online: f.online, sub: f.typing ? 'typing…' : f.prev ? (f.pm ? 'You: ' : '') + f.prev : (f.online ? 'Online' : RL[f.role] || ''), badge: un || '' });
+        const un = unreadOf(f), r = row(f, { online: f.online, sub: f.typing ? 'typing…' : f.prev ? (f.pm ? 'You: ' : '') + f.prev : (f.online ? 'Online' : ''), badge: un || '' });
         r.classList.toggle('unread', !!un); r.title = 'Send a private message';
         r.onclick = () => openWin(f.id);
         frag.append(r);
@@ -127,7 +127,7 @@
     } else if (F.tab === 'requests') {
       if (!F.reqIn.length && !F.reqOut.length) empty('No pending friend requests.');
       if (F.reqIn.length) { const h = document.createElement('h4'); h.textContent = 'Received — ' + F.reqIn.length; frag.append(h); }
-      F.reqIn.filter(match).forEach(u => frag.append(row(u, { online: false, sub: RL[u.role] || '', btns: [['Accept', 'pri', () => act('accept', u.id)], ['Decline', '', () => act('decline', u.id)]] })));
+      F.reqIn.filter(match).forEach(u => frag.append(row(u, { online: false, sub: '', btns: [['Accept', 'pri', () => act('accept', u.id)], ['Decline', '', () => act('decline', u.id)]] })));
       const out = (F.others || []).filter(u => F.reqOut.includes(u.id) && match(u));
       if (out.length) { const h = document.createElement('h4'); h.textContent = 'Sent — ' + out.length; frag.append(h); }
       out.forEach(u => frag.append(row(u, { online: false, sub: 'Waiting for a reply', btns: [['Cancel', '', () => act('cancel', u.id)]] })));
@@ -137,7 +137,7 @@
         const l = F.others.filter(match);
         if (!l.length) empty(q ? 'Nobody matches that name.' : 'There is nobody else here yet.');
         l.forEach(u => {
-          const sub = RL[u.role] || '';
+          const sub = '';
           const btns = u.state === 'friends' ? [['💬 Message', '', () => act('message', u.id)]]
             : u.state === 'sent' ? [['Cancel request', '', () => act('cancel', u.id)]]
             : u.state === 'received' ? [['Accept', 'pri', () => act('accept', u.id)], ['Decline', '', () => act('decline', u.id)]]
@@ -256,7 +256,7 @@
     w.el.setAttribute('aria-label', 'Private chat with ' + f.name);
     const av = w.el.querySelector('.cwf-wav'); if (av.dataset.k !== f.id + ':' + f.avatarAt + ':' + f.online) { av.dataset.k = f.id + ':' + f.avatarAt + ':' + f.online; av.replaceChildren(face(f, f.online)); }
     w.el.querySelector('.cwf-wt b').textContent = f.name;
-    w.el.querySelector('.cwf-wt small').innerHTML = f.online ? '<i class="cw-dot"></i>Online' : esc(RL[f.role] || 'Offline');
+    w.el.querySelector('.cwf-wt small').innerHTML = f.online ? '<i class="cw-dot"></i>Online' : 'Offline';
     const bd = w.el.querySelector('.cwf-wh .cw-badge'); bd.hidden = !(min && un); bd.textContent = un > 99 ? '99+' : un;
     const ty = w.el.querySelector('.cw-typing'); if (!ty.classList.contains('err')) ty.textContent = f.typing ? f.name.split(' ')[0] + ' is typing…' : '';
     if (min) return;
@@ -282,6 +282,7 @@
   }
 
   /* ---------- layout + render ---------- */
+  const railW = () => document.body.classList.contains('hasrail') && !isMobile() ? 72 : 0;
   function layout() {
     const mob = isMobile(), groupOpen = !win.hidden;
     if (mob && groupOpen && (F.panel || F.open.some(id => !F.min[id]))) { F.panel = false; F.open.forEach(id => { F.min[id] = true; }); }   // phones: one sheet at a time
@@ -293,7 +294,7 @@
     if (!mob) {
       const r = a && a.getBoundingClientRect();
       let right = r && r.width ? innerWidth - r.left + 10 : 14;
-      right = Math.max(14, Math.min(right, innerWidth - 330));
+      right = Math.max(14, Math.min(right, innerWidth - 330 - railW()));
       dock.style.right = right + 'px';
       if (!groupOpen && !pill.hidden) {       // the Friends button rides just above the group-chat pill
         const p = pill.getBoundingClientRect();
@@ -302,7 +303,7 @@
     } else { dock.style.right = ''; fab.style.right = fab.style.bottom = ''; }
     // desktop: keep only as many windows as fit
     if (!mob) {
-      const room = Math.max(1, Math.floor((innerWidth - parseFloat(dock.style.right || 14) - 14 - (F.panel ? 322 : 0)) / 312));
+      const room = Math.max(1, Math.floor((innerWidth - parseFloat(dock.style.right || 14) - 14 - railW() - (F.panel && innerWidth < 1100 ? 334 : 0)) / 312));
       while (F.open.length > Math.min(MAX_WIN, room)) closeWin(F.open[0], true);
     }
   }
@@ -310,6 +311,8 @@
     const n = total(), t = n > 99 ? '99+' : n;
     const fb = $('#cwfFabB'); fb.hidden = !n; fb.textContent = t;
     const hb2 = document.getElementById('cwFrB'); if (hb2) { hb2.hidden = !n; hb2.textContent = t; }
+    document.querySelectorAll('#svFr .svb').forEach(e => { e.hidden = !n; e.textContent = t; });   // badge on the server-rail Friends button
+    document.querySelectorAll('#svFr').forEach(e => e.classList.toggle('on', F.panel));
     fab.setAttribute('aria-label', 'Open friends and private messages' + (n ? ', ' + n + ' new' : ''));
   }
   function render() {
@@ -319,13 +322,15 @@
     // windows: create / remove / order (the first in F.open ends up leftmost; the panel is always nearest the group chat)
     for (const id of [...wins.keys()]) if (!F.open.includes(id)) { wins.get(id).el.remove(); wins.delete(id); }
     F.open.forEach(id => { if (!wins.has(id) && byId(id)) { wins.set(id, buildWin(id)); } });
-    const want = [panel, ...F.open.slice().reverse().map(id => wins.get(id)?.el).filter(Boolean)];   // dock is row-reverse: first child = nearest the group chat
+    if (panel.parentNode !== root) root.append(panel);                                                  // Friends panel = flyout next to the server rail
+    const want = F.open.slice().reverse().map(id => wins.get(id)?.el).filter(Boolean);                 // dock is row-reverse: first child = nearest the group chat
     if (want.some((el, i) => dock.children[i] !== el)) want.forEach(el => dock.append(el));          // only reorder when needed (moving a node resets its scroll position)
     F.open.forEach(id => renderWin(id));
   }
 
   /* ---------- poll hooks (called by chat.js) ---------- */
   window.__cwF = {
+    toggle() { if (isMobile()) core.closeWin(); setPanel(!F.panel); }, badges, 
     params() {
       const q = {}, ids = F.open.filter(id => !F.min[id]);
       if (ids.length) { q.dm = ids.join(','); q.drev = ids.map(id => id + ':' + (F.revs[id] ?? -1)).join(','); }
@@ -380,4 +385,5 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
   render();
   core.refresh(0);                           // load friends right away instead of waiting for the next poll
+  if (/[?&]friends=1/.test(location.search)) { history.replaceState(null, '', location.pathname); setPanel(true); }   // from the rail on other pages
 })();
