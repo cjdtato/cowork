@@ -67,3 +67,8 @@ The default admin (`u_admin`) stays Head of **CEPALCO Server** exactly as before
 
 ## Unread badges on server icons
 `POST /api/servers/unread` (global) returns unread chat counts for every server I am in; `servers.js` shows them as red badges on the rail icons (polls every 60 s while visible; the open server is updated live by chat.js via the `cw:unread` event). Read marks are per server: `cw_seen` (CEPALCO) / `cw_seen_<id>`.
+
+## Accounts moved to Admin settings (global)
+- Account CRUD (add / edit name, active, temp password / delete) and Backup export/import now live in `admin-accounts.html` (Admin → 👥 Accounts & backup), platform admin only, **not tied to any server**. Table shows each account's servers.
+- API (platform admin only): `GET/POST /admin/accounts` · `PUT/DELETE /admin/accounts/<id>`. Old `POST /users`, `DELETE /users/<id>`, `/backup` on CEPALCO now return 403 for non-platform-admins.
+- CEPALCO's Manage Users page keeps positions, supervisors and custom roles only (no create/delete/backup).

@@ -15,7 +15,8 @@ th{font-size:.65rem;text-transform:uppercase;opacity:.6}.fm{display:grid;grid-te
 .rl{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}.rl .tag{display:inline-flex;align-items:center;gap:6px;font-size:.75rem;padding:4px 6px 4px 10px}.rl .mini{margin:0}
 #tm{border:1px dashed var(--bd);border-radius:12px;padding:10px 12px;margin:8px 0 14px;background:var(--soft)}
 .top .row .btn{flex:1 1 auto}
-@media(max-width:700px){.top .row{display:grid;grid-template-columns:1fr 1fr}.top .row .btn:first-child{grid-column:1/-1}.fm{grid-template-columns:1fr}table{font-size:.75rem}td:last-child .mini{margin:2px 0}}</style></head>
+@media(max-width:700px){.top .row{display:grid;grid-template-columns:1fr 1fr}.top .row .btn:first-child{grid-column:1/-1}.fm{grid-template-columns:1fr}table{font-size:.75rem}td:last-child .mini{margin:2px 0}}body.noacct #bx,body.noacct #bi,body.noacct [data-d]{display:none!important}
+body.noacct:not(.editing) #f,body.noacct:not(.editing) #ft{display:none}</style></head>
 <body class="th-white">
 <script src="auth.js"></script>
 <script src="servers.js" defer></script>
@@ -72,11 +73,11 @@ function render(){
   <td style="white-space:nowrap"><button class="mini" data-e="${u.id}">✏️ Edit</button> <button class="mini" data-d="${u.id}">🗑 Delete</button></td></tr>`).join('');
   hostBoxes(editId?(US.find(u=>u.id===editId)||{hostIds:[]}).hostIds:[]);tagBoxes(keep);syncRole();
 }
-function reset(){editId=null;$('#f').reset();$('#fa').checked=true;$('#fu').disabled=false;$('#fp').required=true;$('#fp').placeholder='Temporary password';$('#ft').textContent='Add user';$('#fs').textContent='＋ Add';$('#fc').hidden=true;render()}
+function reset(){document.body.classList.remove('editing');editId=null;$('#f').reset();$('#fa').checked=true;$('#fu').disabled=false;$('#fp').required=true;$('#fp').placeholder='Temporary password';$('#ft').textContent='Add user';$('#fs').textContent='＋ Add';$('#fc').hidden=true;render()}
 $('#fc').onclick=reset;
 $('#tb').onclick=async e=>{
   const eb=e.target.closest('[data-e]'),db=e.target.closest('[data-d]');
-  if(eb){const u=US.find(x=>x.id===eb.dataset.e);editId=u.id;$('#fu').value=u.username;$('#fu').disabled=true;$('#fn').value=u.name;$('#fp').value='';
+  if(eb){document.body.classList.add('editing');const u=US.find(x=>x.id===eb.dataset.e);editId=u.id;$('#fu').value=u.username;$('#fu').disabled=true;$('#fn').value=u.name;$('#fp').value='';
     $('#fp').required=false;$('#fp').placeholder='New temporary password (blank = keep)';$('#fr').value=u.role;$('#fa').checked=u.active;
     $('#ft').textContent='Edit '+u.username;$('#fs').textContent='💾 Save';$('#fc').hidden=false;hostBoxes(u.hostIds);tagBoxes(u.tagIds||[]);syncRole();scrollTo({top:0,behavior:'smooth'})}
   if(db){const u=US.find(x=>x.id===db.dataset.d);
@@ -90,7 +91,7 @@ $('#f').onsubmit=async e=>{
   try{
     if(editId){if(pw)b.password=pw;await api('/api/users/'+editId,'PUT',b);toast('User updated')}
     else{b.username=$('#fu').value;b.password=pw;await api('/api/users','POST',b);toast('User added')}
-    editId=null;$('#f').reset();$('#fa').checked=true;$('#fu').disabled=false;$('#fp').required=true;$('#fp').placeholder='Temporary password';$('#ft').textContent='Add user';$('#fs').textContent='＋ Add';$('#fc').hidden=true;load();
+    document.body.classList.remove('editing');editId=null;$('#f').reset();$('#fa').checked=true;$('#fu').disabled=false;$('#fp').required=true;$('#fp').placeholder='Temporary password';$('#ft').textContent='Add user';$('#fs').textContent='＋ Add';$('#fc').hidden=true;load();
   }catch(x){fail(x)}
 };
 $('#rf').onsubmit=async e=>{e.preventDefault();const n=$('#rn').value.trim();if(!n)return;
@@ -118,6 +119,9 @@ $('#bf').onchange=e=>{const f=e.target.files[0];e.target.value='';if(!f)return;c
     catch(x){toast(x instanceof SyntaxError?'Invalid backup file':x.message)}};r.readAsText(f)};
 (async()=>{const m=await currentUser();
   if(!m)return location.replace('login.html');
-  ME=m.user;if(ME.role!=='admin')return location.replace('index.html');load()})();
+  ME=m.user;if(ME.role!=='admin')return location.replace('index.html');
+  if(!localStorage.getItem('stb_sv')&&!ME.superAdmin){document.body.classList.add('noacct')}
+  if(!localStorage.getItem('stb_sv')&&ME.superAdmin){const n=document.createElement('div');n.className='help';n.innerHTML='Creating/deleting accounts and backups moved to <a href="admin-accounts.html"><b>Admin settings → Accounts</b></a>.';document.querySelector('main').prepend(n);document.body.classList.add('noacct')}
+  load()})();
 </script><script src="chat.js" defer></script><script src="friends.js" defer></script><script src="posts.js" defer></script>
 </body></html>

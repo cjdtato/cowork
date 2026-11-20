@@ -1,8 +1,8 @@
-# Co-Work v2.12.3 — Deploy Guide (GitHub → Netlify)
+# Co-Work v2.13.0 — Deploy Guide (GitHub → Netlify)
 
 ## 1. Push to GitHub
 ```
-git init && git add . && git commit -m "Co-Work v2.12.3"
+git init && git add . && git commit -m "Co-Work v2.13.0"
 git branch -M main
 git remote add origin <your-repo-url> && git push -u origin main
 ```
@@ -16,7 +16,7 @@ git remote add origin <your-repo-url> && git push -u origin main
 > Deploy from Git or the Netlify CLI. Drag-and-drop will NOT install `@netlify/blobs`.
 
 ## 3. First login
-Open the site → log in as `admin` with your `ADMIN_INITIAL_PASSWORD` → **Users** page → add Supervisors, then Staff. Temporary passwords must be changed at first login.
+Open the site → log in as `admin` with your `ADMIN_INITIAL_PASSWORD` → **Admin → 👥 Accounts & backup** → create accounts, then set positions/roles per server (Admin → Manage people & roles). Temporary passwords must be changed at first login.
 
 ## 4. Verify (2 minutes)
 - `https://<site>/api/` responds (JSON error or data, not a 404 page).

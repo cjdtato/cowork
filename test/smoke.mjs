@@ -438,6 +438,12 @@ console.log('Platform admin (default admin)');
   check('admin: can transfer ownership (orphan fix)', (await N('/admin/servers/' + mk2.d.id + '/owner', 'PUT', { userId: 'u_admin' })).status === 200 && (await N('/admin/servers')).d.servers.find(x => x.id === mk2.d.id).owner !== 'Unknown');
   check('admin: can delete any server (not only his own)', (await N('/servers/' + mk2.d.id, 'DELETE')).status === 200 && (await N('/servers/' + SID, 'DELETE')).status === 200 && !(await N('/admin/servers')).d.servers.some(x => x.id === SID || x.id === mk2.d.id));
   check('admin: another Head (not the default admin) still cannot enter or delete someone else\'s server', (await SS('/servers', 'POST', { name: 'Private' })).status === 201 && await (async () => { const o = (await SS('/servers')).d.servers.find(x => x.name === 'Private').id; return (await H2('/me#sv=' + o)).status === 403 && (await H2('/servers/' + o, 'DELETE')).status === 403; })());
+  const ac = await N('/admin/accounts', 'POST', { username: 'glob1', name: 'Global One', password: 'secret123' });
+  check('accounts: platform admin creates a global account (any server header)', ac.status === 200 && (await N('/admin/accounts')).d.accounts.some(u => u.username === 'glob1' && u.servers.includes('CEPALCO Server')));
+  check('accounts: duplicate / weak password rejected', (await N('/admin/accounts', 'POST', { username: 'glob1', password: 'secret123' })).status === 400 && (await N('/admin/accounts', 'POST', { username: 'glob2', password: '123' })).status === 400);
+  check('accounts: edit name, disable, delete', await (async () => { const id = (await N('/admin/accounts')).d.accounts.find(u => u.username === 'glob1').id; return (await N('/admin/accounts/' + id, 'PUT', { name: 'Renamed', active: false })).status === 200 && (await N('/admin/accounts')).d.accounts.find(u => u.id === id).active === false && (await N('/admin/accounts/' + id, 'DELETE')).status === 200 && !(await N('/admin/accounts')).d.accounts.some(u => u.id === id); })());
+  check('accounts: non-platform-admin gets 403', (await SS('/admin/accounts')).status === 403 && (await SS('/admin/accounts', 'POST', { username: 'zz9', password: 'secret123' })).status === 403);
+  check('accounts: admin cannot delete himself', (await N('/admin/accounts/u_admin', 'DELETE')).status === 400);
 }
 
 console.log('Cross-server calendar');

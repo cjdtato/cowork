@@ -1,3 +1,7 @@
+# v2.13.0
+- Accounts (add/edit/delete) and Backup moved to Admin settings → Accounts & backup; global, not bound to any server. New API `/admin/accounts`.
+- CEPALCO Manage Users keeps positions/roles only. Cache headers tuned (HTML revalidates, assets cached + stale-while-revalidate, API never cached).
+
 # Unread chat badges on the server icons (Discord style)
 Every server icon in the left rail now shows a red badge with the number of unread chat messages in that server, from **any channel you can see there** (`#general`, other channels, and private role chats such as `billing-chat`). Your own messages never count; role chats count only if you hold the role. The count clears as you read it in the chat; the open server updates instantly, the others refresh about once a minute (only while the tab is visible) and when you return to the tab. Works on every page that has the rail, including the Cross-server Calendar.
 - API: `POST /api/servers/unread` `{seen:{<serverId>:"ch:ts,..."}}` -> `{servers:{<id>:{unread,last:{<ch>:ts}}}}` (global, ignores `X-Server`; one small request a minute per open tab).

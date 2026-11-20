@@ -367,6 +367,62 @@ export default async (req) => {
     if (path.startsWith('/admin/')) {
       if (!isSuper) throw H('Not allowed', 403);
       const nameOf = id => allUs.find(u => u.id === id)?.name || allUs.find(u => u.id === id)?.username || null;
+      // ----- global accounts (not tied to any server): list / create / edit / delete -----
+      if (path === '/admin/accounts' && m === 'GET') {
+        const svs = await srvList();
+        return J({ accounts: allUs.map(u => ({ id: u.id, username: u.username, name: u.name, active: u.active, admin: u.id === DEFAULT_ADMIN, mustChange: !!u.mustChange, created: u.created, servers: [SV_NAME, ...svs.filter(x => x.members && x.members[u.id]).map(x => x.name)] })) });
+      }
+      if (path === '/admin/accounts' && m === 'POST') {
+        const un = String(body.username || '').trim().toLowerCase();
+        if (!UN.test(un)) throw H('Username: 3–30 letters, numbers, . _ -');
+        if (String(body.password || '').length < 6) throw H('Password must be at least 6 characters.');
+        await mutUsers(st, list => {
+          if (list.some(x => x.username === un)) throw H('Username already exists.');
+          const salt = randomBytes(8).toString('hex');
+          list.push({ id: 'u_' + randomBytes(6).toString('hex'), username: un, name: String(body.name || '').trim().slice(0, 60) || un, role: 'staff', active: body.active !== false, salt, hash: hp(body.password, salt), created: today(), hostIds: [], tagIds: [], mustChange: true });
+        });
+        return J({ ok: 1 });
+      }
+      const acm = path.match(/^\/admin\/accounts\/([\w-]+)$/);
+      if (acm && m === 'PUT') {
+        const id = acm[1];
+        await mutUsers(st, list => {
+          const u = list.find(x => x.id === id);
+          if (!u) throw H('User not found', 404);
+          const active = body.active !== false;
+          if (u.id === meG.id && !active) throw H("You can't disable your own account.");
+          if (u.role === 'admin' && u.active && !active && activeAdmins(list) < 2) throw H('Keep at least one active admin.');
+          u.name = String(body.name || '').trim().slice(0, 60) || u.username; u.active = active;
+          if (body.password) {
+            if (String(body.password).length < 6) throw H('Password must be at least 6 characters.');
+            u.salt = randomBytes(8).toString('hex'); u.hash = hp(body.password, u.salt); u.pv = (u.pv || 0) + 1;
+            if (u.id !== meG.id) u.mustChange = true;
+          }
+        });
+        return J({ ok: 1 });
+      }
+      if (acm && m === 'DELETE') {
+        const id = acm[1];
+        if (id === meG.id) throw H("You can't delete your own account.");
+        await mutUsers(st, list => {
+          const i = list.findIndex(x => x.id === id);
+          if (i < 0) throw H('User not found', 404);
+          if (list[i].role === 'admin' && list[i].active && activeAdmins(list) < 2) throw H('Keep at least one active admin.');
+          list.splice(i, 1);
+          list.forEach(u => { u.hostIds = (u.hostIds || []).filter(h => h !== id); });
+        });
+        for (const x of [{ id: DEF_SV }, ...(await srvList())]) await bs.delete(svKey(x.id, 'board:' + id));
+        await st.delete('avatar:' + id); await st.delete('pres:' + id); await st.delete('posts:' + id);
+        const fo = await frGet(st, id);
+        for (const o of uniq([...fo.f, ...fo.in, ...fo.out])) { await frDrop(st, id, o); await st.delete(dmKey(id, o)); }
+        await st.delete('fr:' + id);
+        await mutate(st, 'servers', () => [], l => l.forEach(x => { delete x.members[id]; Object.values(x.members).forEach(v => { v.hostIds = (v.hostIds || []).filter(h => h !== id); }); }));
+        await mutShared(st, sh => sh.tasks.forEach(t => {
+          t.assignees = t.assignees.filter(a => a.id !== id); t.hostIds = t.hostIds.filter(h => h !== id);
+          if (!t.assignees.length) t.status = 'trash';
+        }));
+        return J({ ok: 1 });
+      }
       const detail = async x => {
         const [tags, chans, sh] = await Promise.all(['tags', 'chat:channels', 'shared'].map(k => bs.get(svKey(x.id, k), { type: 'json' })));
         const tg = tags || [], mem = x.members || {};
@@ -939,6 +995,7 @@ export default async (req) => {
     }
     if (path === '/users' && m === 'GET') return J({ users: us.map(u => pub(u, us)) });
     if (path === '/users' && m === 'POST') {
+      if (!isSuper) throw H('Creating accounts is in Admin settings (platform admin only).', 403);
       const un = String(body.username || '').trim().toLowerCase();
       if (!UN.test(un)) throw H('Username: 3–30 letters, numbers, . _ -');
       if (String(body.password || '').length < 6) throw H('Password must be at least 6 characters.');
@@ -955,6 +1012,7 @@ export default async (req) => {
     const um = path.match(/^\/users\/([\w-]+)$/);
     if (um) {
       const id = um[1];
+      if (m === 'DELETE' && !isSuper) throw H('Deleting accounts is in Admin settings (platform admin only).', 403);
       if (m === 'PUT') {
         let selfPv = null;
         const tags = await tagsRaw(st);
@@ -1038,6 +1096,7 @@ export default async (req) => {
       return J({ ok: 1 });
     }
 
+    if (path === '/backup' && !isSuper) throw H('Backup/restore is in Admin settings (platform admin only).', 403);
     if (path === '/backup' && m === 'GET') {
       const boards = {};
       for (const u of us) { const b = await st.get('board:' + u.id, { type: 'json' }); if (b) boards[u.id] = b; }
